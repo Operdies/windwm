@@ -1,11 +1,12 @@
+SRC = wdwm.c util.c
 CC = gcc
-CFLAGS = -std=c99 -pedantic -Wall -Os
+CFLAGS = -std=c99 -pedantic -Wall -O0 -g -DDEBUG
 
-main.exe: main.c Makefile
-	${CC} ${CFLAGS} $< -o $@ ${LDFLAGS}
+wdwm.exe: ${SRC} Makefile config.h
+	${CC} ${CFLAGS} ${SRC} -o $@ ${LDFLAGS}
 
-compile_commands.json: Makefile
+compile_commands.json: wdwm.exe
 	compiledb make || echo "compiledb is not installed."
 
-run: main.exe compile_commands.json
-	./main.exe
+run: wdwm.exe compile_commands.json
+	./wdwm.exe

@@ -7,7 +7,6 @@
 
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -32,7 +31,7 @@
 
 /* types */
 
-typedef uint8_t u8;
+typedef unsigned char u8;
 
 typedef union {
   int i;
@@ -57,6 +56,7 @@ struct Client {
   int x, y, w, h;
   int oldx, oldy, oldw, oldh;
   int basew, baseh, incw, inch, maxw, maxh, minw, minh, hintsvalid;
+  double dpix, dpiy;
   int bw, oldbw;
   unsigned int tags;
   int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen;
@@ -73,6 +73,8 @@ typedef struct {
 
 struct Monitor {
   DISPLAY_DEVICE dd;
+  MONITORINFO mi;
+  HMONITOR hmon;
   float mfact;
   int nmaster;
   int num;
@@ -125,7 +127,7 @@ void grabkeys(void);
 void setnmaster(const Arg *arg);
 void incnmaster(const Arg *arg);
 void killclient(const Arg *arg);
-void manage(HWND hwnd);
+void manage(HWND hwnd, Monitor *owner);
 void monocle(Monitor *m);
 void movemouse(const Arg *arg);
 Client *nexttiled(Client *c);
@@ -156,6 +158,7 @@ void splitmon(const Arg *arg);
 void tag(const Arg *arg);
 void tagmon(const Arg *arg);
 void tilewide(Monitor *m);
+void tilewhat(Monitor *m);
 void togglebar(const Arg *arg);
 void togglebarelems(const Arg *arg);
 void togglefloating(const Arg *arg);

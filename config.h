@@ -6,8 +6,8 @@
 /* tagging */
 static const char *tags[] = {"1", "2", "3", "4", "5", "6", "7", "8", "9"};
 /* the gaps between windows can be adjusted by tuning borderpx. */
-static const int borderpx = -5;
-static const int mouse_warp = 1;
+static const int borderpx = 0;
+int mouse_warp = 1;
 
 /* not really a configuration. Just a hack to treat windows task bar like the dwm bar */
 static const int showbar = 1;
@@ -16,8 +16,8 @@ static const int topbar = 0;
 static const Layout layouts[] = {
     /* symbol     arrange function */
     {"[]=", tilewide}, /* first entry is default */
-    {"><>", NULL},     /* no layout function means floating behavior */
-    {"[M]", monocle},
+    // {"><>", NULL},     /* no layout function means floating behavior */
+    // {"[M]", monocle},
 };
 
 #define MODKEY MetaMask
@@ -28,10 +28,10 @@ static const Layout layouts[] = {
 	{ MODKEY|ShiftMask,             KEY,      tag,            {.ui = 1 << TAG} }, \
 	{ MODKEY|ControlMask|ShiftMask, KEY,      toggletag,      {.ui = 1 << TAG} },
 
-// clang-format on
 
 static const char termcmd[] = "alacritty.exe";
 
+// clang-format off
 static const Key keys[] =
 {
 	/* modifier                     key             function                 argument */
@@ -46,11 +46,11 @@ static const Key keys[] =
 	{ MODKEY,                       'L',            setmfact,             {.f = +0.05} },
 	{ MODKEY,                       'G',            zoom,                 {0} },
 	{ MODKEY,                       'Q',            killclient,           {0} },
-	{ MODKEY,                       'T',            setlayout,            {.v = &layouts[0]} },
-	{ MODKEY,                       'M',            setlayout,            {.v = &layouts[1]} },
-	{ MODKEY,                       'W',            setlayout,            {.v = &layouts[2]} },
+	// { MODKEY,                       'T',            setlayout,            {.v = &layouts[0]} },
+	// { MODKEY,                       'M',            setlayout,            {.v = &layouts[2]} },
 	{ MODKEY,                       VK_SPACE,       setlayout,            {0} },
 	{ MODKEY|ShiftMask,             VK_SPACE,       togglefloating,       {0} },
+	// { MODKEY,                       'W',            setlayout,            {.v = &layouts[1]} },
 	{ MODKEY,                       '0',            view,                 {.ui = ~0 } },
 	{ MODKEY|ShiftMask,             '0',            toggleview,           {.ui = ~0 } },
 	{ MODKEY,                       VK_OEM_PERIOD,  focusmon,             {.i = -1 } },

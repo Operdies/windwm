@@ -5,7 +5,23 @@
 #include <shellapi.h>
 #include <string.h>
 
-int barheight = 0;
+void setwindowpos(Client *c, int x, int y, int w, int h, UINT flags) {
+  TRACEF("Update: (%d,%d) %dx%d", x, y, w, h);
+  if (c->isfloating) {
+    // preserve current position but apply flags and make topmost
+    RECT pos;
+    GetWindowRect(c->hwnd, &pos);
+    SetWindowPos(c->hwnd, HWND_TOPMOST, pos.left, pos.top, pos.right - pos.left, pos.bottom - pos.top, flags);
+  } else {
+    RECT before, after;
+    GetWindowRect(c->hwnd, &before);
+    SetWindowPos(c->hwnd, HWND_NOTOPMOST, x, y, w, h, flags);
+    GetWindowRect(c->hwnd, &after);
+
+    TRACEF("Before: (%ld,%ld) %ldx%ld", before.left, before.top, before.right - before.left, before.bottom - before.top);
+    TRACEF(" After: (%ld,%ld) %ldx%ld", after.left, after.top, after.right - after.left, after.bottom - after.top);
+  }
+}
 
 void _spawn(const char *cmd, bool elevate) {
   if (!ShellExecuteA(NULL, elevate ? "runas" : "open", cmd, 0, 0, SW_SHOWNORMAL))
@@ -14,26 +30,36 @@ void _spawn(const char *cmd, bool elevate) {
 void spawn(const Arg *arg) { _spawn(arg->v, false); }
 void spawn_elevated(const Arg *arg) { _spawn(arg->v, true); }
 
-void focusclientundercursor(int x, int y) {
-  Client *c;
-  Monitor *m;
-  for (m = mons; m; m = m->next) {
-    for (c = m->clients; c; c = c->next)
-      if (x >= c->x && x <= c->x + c->w && y >= c->y && y <= c->y + c->w) {
-        if (selmon->sel != c) {
-          focus(c);
-        }
-        return;
-      }
-  }
-}
-
-bool mouseenabled = false;
+static bool mouseenabled = true;
 LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
-  if (mouseenabled && nCode == HC_ACTION) {
+  static int lbutton = 0;
+  static int rbutton = 0;
+
+  switch (wParam) {
+  case WM_LBUTTONDOWN:
+    lbutton = 1;
+    break;
+  case WM_LBUTTONUP:
+    lbutton = 0;
+    break;
+  case WM_RBUTTONDOWN:
+    rbutton = 1;
+    break;
+  case WM_RBUTTONUP:
+    rbutton = 0;
+    break;
+  }
+
+  if (!lbutton && !rbutton && mouseenabled && nCode == HC_ACTION && wParam == WM_MOUSEMOVE) {
     PMSLLHOOKSTRUCT p = (PMSLLHOOKSTRUCT)lParam;
-    TRACEF("Mouse event: %lld %ld %ld", wParam, p->pt.x, p->pt.y);
-    focusclientundercursor(p->pt.x, p->pt.y);
+    HWND hwnd = WindowFromPoint(p->pt);
+    Client *c = wintoclient(hwnd);
+    if (c && selmon->sel != c) {
+      bool tmp = mouse_warp;
+      mouse_warp = false;
+      focus(c);
+      mouse_warp = tmp;
+    }
   }
   return CallNextHookEx(NULL, nCode, wParam, lParam);
 }
@@ -67,7 +93,6 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
       const Key *k = &keys[i];
       if (k->mods == modmask && k->vk == vk) {
         intercept = 1;
-        TRACEF("Intercepted key: %d %d %d %d", k->mods, k->vk, keydown, is_release);
         if (is_release)
           k->func(&k->arg);
       }
@@ -188,15 +213,20 @@ void resizeclient(Client *c, int x, int y, int w, int h) {
   c->y = y;
   c->w = w;
   c->h = h;
-  SetWindowPos(c->hwnd, NULL, c->x, c->y, c->w, c->h, SWP_NOZORDER | SWP_NOACTIVATE);
+  setwindowpos(c, c->x, c->y, c->w, c->h, SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 void warpmouse(int x, int y) { SetCursorPos(x, y); }
 
 void warp(const Client *c) {
   POINT p;
-  p.x = c->x + c->w / 2;
-  p.y = c->y + c->h / 2;
+  if (c) {
+    p.x = c->x + c->w / 2;
+    p.y = c->y + c->h / 2;
+  } else {
+    p.x = selmon->mx + selmon->mw / 2;
+    p.y = selmon->my + selmon->mh / 2;
+  }
   warpmouse(p.x, p.y);
 }
 
@@ -221,18 +251,13 @@ void attachstack(Client *c) {
   c->mon->stack = c;
 }
 
-void setwindowpos(HWND hwnd, HWND hwndInsertAfter, int x, int y, int w, int h, UINT flags) {
-  TRACEF("Setting window position: (%d,%d) %dx%d", x, y, w, h);
-  SetWindowPos(hwnd, hwndInsertAfter, x, y, w, h, flags);
-}
-
 void showhide(Client *c) {
   if (!c)
     return;
   if (ISVISIBLE(c)) {
     TRACEF("Showing client: %s", c->name);
     /* show clients top down */
-    setwindowpos(c->hwnd, HWND_TOP, c->x, c->y, c->w, c->h, SWP_NOACTIVATE);
+    setwindowpos(c, c->x, c->y, c->w, c->h, SWP_NOACTIVATE);
     if ((!c->mon->lt[c->mon->sellt]->arrange || c->isfloating) && !c->isfullscreen)
       resize(c, c->x, c->y, c->w, c->h, 0);
     showhide(c->snext);
@@ -240,11 +265,12 @@ void showhide(Client *c) {
     TRACEF("Hiding client: %s", c->name);
     /* hide clients bottom up */
     showhide(c->snext);
-    SetWindowPos(c->hwnd, HWND_BOTTOM, c->x, c->y, c->w, c->h, SWP_NOACTIVATE);
+    setwindowpos(c, c->x, c->y, c->w, c->h, SWP_NOACTIVATE);
   }
 }
 
 void arrange(Monitor *m) {
+  describemonitor(m);
   if (m)
     showhide(m->stack);
   else
@@ -353,7 +379,6 @@ void unfocus(Client *c, int setfocus) {
 
 void focusmon(const Arg *arg) {
   Monitor *m;
-  TRACE("");
 
   if (!mons->next)
     return;
@@ -367,11 +392,9 @@ void focusmon(const Arg *arg) {
 }
 
 void focusstack(const Arg *arg) {
-  TRACE("");
   Client *c = NULL, *i;
 
   if (!selmon->sel || (selmon->sel->isfullscreen && lockfullscreen)) {
-    TRACEF("no salmon? %p", (void *)selmon->sel);
     return;
   }
   if (arg->i > 0) {
@@ -423,14 +446,14 @@ void focus(Client *c) {
     attachstack(c);
     /* Avoid flickering when another client appears and the border
      * is restored */
-    setfocus(c);
   }
+  setfocus(c);
   selmon->sel = c;
   arrange(selmon);
 }
 
 void setfocus(Client *c) {
-  if (!c->neverfocus) {
+  if (c && !c->neverfocus) {
     SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, (void *)1, 0);
     int i;
     for (i = 0; i < 1000; i++) {
@@ -477,14 +500,14 @@ void monocle(Monitor *m) {
 }
 
 void restack(Monitor *m) {
-  if (!m->sel)
-    return;
-  if (m->sel->isfloating || !m->lt[m->sellt]->arrange) {
-    // XRaiseWindow(dpy, m->sel->win);
-    SetWindowPos(m->sel->hwnd, HWND_TOP, m->sel->x, m->sel->y, m->sel->w, m->sel->h, SWP_NOACTIVATE);
+  if (m && m->sel) {
+    if (m->sel->isfloating || !m->lt[m->sellt]->arrange) {
+      // XRaiseWindow(dpy, m->sel->win);
+      setwindowpos(m->sel, m->sel->x, m->sel->y, m->sel->w, m->sel->h, SWP_NOACTIVATE);
+    }
+    if (mouse_warp && m == selmon && (m->tagset[m->seltags] & m->sel->tags) && m->lt[m->sellt]->arrange != &monocle)
+      warp(selmon->sel);
   }
-  if (mouse_warp && m == selmon && (m->tagset[m->seltags] & m->sel->tags) && m->lt[m->sellt]->arrange != &monocle)
-    warp(selmon->sel);
 }
 
 void detach(Client *c) {
@@ -540,7 +563,7 @@ void unmanage(HWND hwnd) {
   arrange(m);
 }
 
-void manage(HWND hwnd) {
+void manage(HWND hwnd, Monitor *owner) {
   char name[256];
   if (!IsWindowVisible(hwnd) || IsIconic(hwnd) || !CanMoveWindow(hwnd) || !IsWindowResizableMovable(hwnd) || !GetWindowText(hwnd, name, sizeof(name))) {
     unmanage(hwnd);
@@ -553,19 +576,24 @@ void manage(HWND hwnd) {
   Client *c;
   RECT rect;
   GetWindowRect(hwnd, &rect);
-  Monitor *owner = selmon;
-  // the owner of the window is whatever monitor contains the top left corner.
-  // If no monitor contains the corner, selmon is used as a fallback
-  for (Monitor *m = mons; m; m = m->next) {
-    if (rect.left >= m->mx && rect.left < m->mx + m->mw && rect.top >= m->my && rect.top < m->my + m->mh) {
-      owner = m;
-      break;
+  if (!owner) {
+    // the owner of the window is whatever monitor contains the top left corner.
+    // If no monitor contains the corner, selmon is used as a fallback
+    for (Monitor *m = mons; m; m = m->next) {
+      if (rect.left >= m->mx && rect.left < m->mx + m->mw && rect.top >= m->my && rect.top < m->my + m->mh) {
+        owner = m;
+        break;
+      }
     }
+    if (!owner)
+      owner = selmon;
   }
 
   c = ecalloc(1, sizeof(Client));
   c->hwnd = hwnd;
   c->mon = owner;
+  c->dpix = 1;
+  c->dpiy = 1;
 
   c->x = c->oldx = rect.left;
   c->y = c->oldy = rect.top;
@@ -601,12 +629,22 @@ void setupmons(void) {
     dm.dmSize = sizeof(dm);
     if (EnumDisplaySettings(dd.DeviceName, ENUM_CURRENT_SETTINGS, &dm)) {
       Monitor *m = createmon();
+      HMONITOR hmon = MonitorFromPoint((POINT){dm.dmPosition.x, dm.dmPosition.y}, MONITOR_DEFAULTTONEAREST);
+      MONITORINFO mi;
+      mi.cbSize = sizeof(mi);
+      GetMonitorInfo(hmon, &mi);
+
       m->dd = dd;
-      m->mw = m->ww = dm.dmPelsWidth;
-      m->mh = m->wh = dm.dmPelsHeight;
-      m->mx = m->wx = dm.dmPosition.x;
-      m->my = m->wy = dm.dmPosition.y;
-      m->wh -= barheight;
+      m->hmon = hmon;
+      m->mi = mi;
+      m->mw = mi.rcMonitor.right - mi.rcMonitor.left;
+      m->mh = mi.rcMonitor.bottom - mi.rcMonitor.top;
+      m->mx = mi.rcMonitor.left;
+      m->my = mi.rcMonitor.top;
+      m->ww = mi.rcWork.right - mi.rcWork.left;
+      m->wh = mi.rcWork.bottom - mi.rcWork.top;
+      m->wx = mi.rcWork.left;
+      m->wy = mi.rcWork.top;
 
       m->next = mons;
       mons = m;
@@ -620,7 +658,7 @@ void setupclients(void) {
   HWND hwnd = GetTopWindow(NULL);
   while (hwnd) {
     if (IsWindowVisible(hwnd) && !IsIconic(hwnd) && CanMoveWindow(hwnd) && IsWindowResizableMovable(hwnd)) {
-      manage(hwnd);
+      manage(hwnd, NULL);
     }
     hwnd = GetNextWindow(hwnd, GW_HWNDNEXT);
   }
@@ -673,18 +711,6 @@ void setmfact(const Arg *arg) {
     return;
   selmon->mfact = f;
   arrange(selmon);
-}
-
-int GetTaskbarHeight(void) {
-  RECT taskbarRect;
-  SystemParametersInfo(SPI_GETWORKAREA, 0, &taskbarRect, 0);
-  return GetSystemMetrics(SM_CYSCREEN) - (taskbarRect.bottom - taskbarRect.top);
-}
-
-void scan(void) {
-  barheight = GetTaskbarHeight();
-  setupmons();
-  setupclients();
 }
 
 void sendmon(Client *c, Monitor *m) {
@@ -776,16 +802,15 @@ void quit(const Arg *arg) {
 
 void ensurefocused(void) {
   HWND hwnd = GetForegroundWindow();
-  if (hwnd == NULL)
-    return;
-  if (selmon && selmon->sel && selmon->sel->hwnd != hwnd) {
-    Client *c = wintoclient(hwnd);
-    if (c == NULL)
-      manage(hwnd);
-    c = wintoclient(hwnd);
-    if (c == NULL)
-      return;
-    focus(c);
+  if (hwnd != NULL) {
+    if (selmon && selmon->sel && selmon->sel->hwnd != hwnd) {
+      Client *c = wintoclient(hwnd);
+      if (c == NULL)
+        manage(hwnd, selmon);
+      c = wintoclient(hwnd);
+      if (c != NULL)
+        focus(c);
+    }
   }
 }
 
@@ -795,7 +820,7 @@ void CALLBACK WindowCallback(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd
   case EVENT_OBJECT_SHOW:
   case EVENT_OBJECT_FOCUS:
   case EVENT_SYSTEM_MINIMIZEEND:
-    manage(hwnd);
+    manage(hwnd, selmon);
     break;
   case EVENT_OBJECT_DESTROY:
   case EVENT_OBJECT_HIDE:
@@ -803,9 +828,25 @@ void CALLBACK WindowCallback(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd
     unmanage(hwnd);
     break;
   }
+  Client *c = wintoclient(GetForegroundWindow());
+  if (c) {
+    selmon = c->mon;
+    selmon->sel = c;
+  }
   // just in case focus was changed in some other way I don't know about
-  ensurefocused();
+  // ensurefocused();
 }
+
+void scan(void) {
+  HWND fg = GetForegroundWindow();
+  setupmons();
+  setupclients();
+
+  Client *c = wintoclient(fg);
+  focus(c);
+  TRACE("Setup complete.");
+}
+
 int main(int argc, char **argv) {
   install_crash_handler();
   // check if wdwm.exe is already running.

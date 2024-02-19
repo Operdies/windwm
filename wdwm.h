@@ -184,9 +184,5 @@ void zoom(const Arg *arg);
 
 /* globals */
 Monitor *mons = NULL, *selmon = NULL;
-static const float mfact = 0.65;     /* factor of master area size [0.05..0.95] */
-static const int nmaster = 1;        /* number of clients in master area */
-static const int resizehints = 1;    /* 1 means respect size hints in tiled resizals */
-static const int lockfullscreen = 1; /* 1 will force focus on the fullscreen window */
 
 bool running = 1;

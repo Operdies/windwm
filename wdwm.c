@@ -254,6 +254,10 @@ void attachstack(Client *c) {
 void showhide(Client *c) {
   if (!c)
     return;
+  if (!IsWindow(c->hwnd)) {
+    unmanage(c->hwnd);
+    return;
+  }
   if (ISVISIBLE(c)) {
     TRACEF("Showing client: %s", c->name);
     /* show clients top down */
@@ -814,7 +818,45 @@ void ensurefocused(void) {
   }
 }
 
-void CALLBACK WindowCallback(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime) {
+int EndsWith(const char *str, const char *suffix) {
+  size_t lenstr = strlen(str);
+  size_t lensuffix = strlen(suffix);
+  if (lensuffix > lenstr)
+    return 0;
+  return strncmp(str + lenstr - lensuffix, suffix, lensuffix) == 0;
+}
+
+bool unmanaged_matches(const unmanaged_t *rule, const char *name) {
+  int n = strlen(name);
+  switch (rule->matchtype) {
+  case MATCHES:
+    return strncmp(rule->title, name, n) == 0;
+  case STARTSWITH:
+    return strncmp(rule->title, name, strlen(rule->title)) == 0;
+  case CONTAINS:
+    return strstr(name, rule->title) != NULL;
+  case ENDSWITH:
+    size_t lenstr = strlen(name);
+    size_t lensuffix = strlen(rule->title);
+    if (lensuffix > lenstr)
+      return false;
+    return strncmp(name + lenstr - lensuffix, rule->title, lensuffix) == 0;
+  }
+  return false;
+}
+
+void CALLBACK WindowCallback(HWINEVENTHOOK hWinEventHook, DWORD event,
+                             HWND hwnd, LONG idObject, LONG idChild,
+                             DWORD dwEventThread, DWORD dwmsEventTime) {
+  char name[256] = {0};
+  if (!GetWindowText(hwnd, name, sizeof(name)))
+    return;
+
+  for (int i = 0; i < LENGTH(unmanaged); i++) {
+    if (unmanaged_matches(&unmanaged[i], name))
+      return;
+  }
+
   switch (event) {
   case EVENT_OBJECT_CREATE:
   case EVENT_OBJECT_SHOW:

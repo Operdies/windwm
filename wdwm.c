@@ -12,21 +12,29 @@
 #pragma comment(lib, "Uxtheme.lib")
 #pragma comment(lib, "Shell32.lib")
 #pragma comment(lib, "Advapi32.lib")
+
 void setwindowpos(Client *c, int x, int y, int w, int h, UINT flags) {
+  // if (c->x == x && c->y == y && c->w == w && c->h == h)
+  //   return;
   TRACEF("Update: (%d,%d) %dx%d", x, y, w, h);
+  // flags |= SWP_NOACTIVATE;
+  // flags |= SWP_ASYNCWINDOWPOS;
   if (c->isfloating) {
     // preserve current position but apply flags and make topmost
-    RECT pos;
-    GetWindowRect(c->hwnd, &pos);
-    SetWindowPos(c->hwnd, HWND_TOPMOST, pos.left, pos.top, pos.right - pos.left, pos.bottom - pos.top, flags);
+    SetWindowPos(c->hwnd, HWND_TOP, x, y, w, h, flags);
   } else {
     RECT before, after;
     GetWindowRect(c->hwnd, &before);
     SetWindowPos(c->hwnd, HWND_NOTOPMOST, x, y, w, h, flags);
     GetWindowRect(c->hwnd, &after);
+    c->x = after.left;
+    c->y = after.top;
+    c->w = after.right - after.left;
+    c->h = after.bottom - after.top;
 
     TRACEF("Before: (%ld,%ld) %ldx%ld", before.left, before.top, before.right - before.left, before.bottom - before.top);
     TRACEF(" After: (%ld,%ld) %ldx%ld", after.left, after.top, after.right - after.left, after.bottom - after.top);
+    TRACEF("Client: (%d,%d) %dx%d", c->x, c->y, c->w, c->h);
   }
 }
 
@@ -37,48 +45,14 @@ void _spawn(const char *cmd, bool elevate) {
 void spawn(const Arg *arg) { _spawn(arg->v, false); }
 void spawn_elevated(const Arg *arg) { _spawn(arg->v, true); }
 
-static bool mouseenabled = true;
-LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
-  static int lbutton = 0;
-  static int rbutton = 0;
-
-  switch (wParam) {
-  case WM_LBUTTONDOWN:
-    lbutton = 1;
-    break;
-  case WM_LBUTTONUP:
-    lbutton = 0;
-    break;
-  case WM_RBUTTONDOWN:
-    rbutton = 1;
-    break;
-  case WM_RBUTTONUP:
-    rbutton = 0;
-    break;
-  }
-
-  if (!lbutton && !rbutton && mouseenabled && nCode == HC_ACTION && wParam == WM_MOUSEMOVE) {
-    PMSLLHOOKSTRUCT p = (PMSLLHOOKSTRUCT)lParam;
-    HWND hwnd = WindowFromPoint(p->pt);
-    Client *c = wintoclient(hwnd);
-    if (c && selmon->sel != c) {
-      bool tmp = mouse_warp;
-      mouse_warp = false;
-      focus(c);
-      mouse_warp = tmp;
-    }
-  }
-  return CallNextHookEx(NULL, nCode, wParam, lParam);
-}
-
 #define WIN_DOWN (keystate[VK_LWIN] || keystate[VK_RWIN])
 #define ALT_DOWN (keystate[VK_LMENU] || keystate[VK_RMENU] || keystate[VK_MENU])
 #define CTRL_DOWN (keystate[VK_LCONTROL] || keystate[VK_RCONTROL] || keystate[VK_CONTROL])
 #define SHIFT_DOWN (keystate[VK_LSHIFT] || keystate[VK_RSHIFT] || keystate[VK_SHIFT])
 #define MODMAP (u8)((WIN_DOWN ? SuperMask : 0) | (ALT_DOWN ? MetaMask : 0) | (CTRL_DOWN ? ControlMask : 0) | (SHIFT_DOWN ? ShiftMask : 0))
 
+static bool keystate[0xff] = {0};
 LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
-  static bool keystate[0xff] = {0};
   int intercept = 0;
   if (nCode >= 0) {
     bool is_release, keydown, prevstate;
@@ -106,6 +80,82 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
     }
   }
   return intercept || CallNextHookEx(NULL, nCode, wParam, lParam);
+}
+
+static bool mouseenabled = true;
+LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
+  static int lbutton = 0;
+  static int rbutton = 0;
+  static POINT dragstart;
+  static POINT clientstart;
+  static Client *dragged = NULL;
+  Client *c;
+  HWND hwnd;
+
+  if (nCode == HC_ACTION) {
+    switch (wParam) {
+    case WM_LBUTTONDOWN:
+      lbutton = 1;
+      break;
+    case WM_LBUTTONUP:
+      lbutton = 0;
+      break;
+    case WM_RBUTTONDOWN:
+      rbutton = 1;
+      break;
+    case WM_RBUTTONUP:
+      rbutton = 0;
+      break;
+    }
+    if (wParam == WM_MOUSEMOVE) {
+      PMSLLHOOKSTRUCT p = (PMSLLHOOKSTRUCT)lParam;
+      // clang-format off
+      for (hwnd = WindowFromPoint(p->pt), c = wintoclient(hwnd); 
+           hwnd && !c; 
+           hwnd = GetParent(hwnd), c = wintoclient(hwnd));
+      // clang-format on
+      if (hwnd) {
+        // drag move
+        if (mouse_drag && lbutton && ALT_DOWN) {
+          // start drag
+          if (!dragged) {
+            TRACE("Start drag");
+            dragstart = p->pt;
+            dragged = wintoclient(hwnd);
+            if (dragged) {
+              clientstart.x = dragged->x;
+              clientstart.y = dragged->y;
+              mouseenabled = false;
+              dragged->isfloating = true;
+            }
+          }
+          if (dragged) {
+            int deltax = p->pt.x - dragstart.x;
+            int deltay = p->pt.y - dragstart.y;
+
+            TRACEF("Drag: %d, %d", deltax, deltay);
+
+            SetCursorPos(p->pt.x, p->pt.y);
+            setwindowpos(dragged, clientstart.x + deltax, clientstart.y + deltay, dragged->w, dragged->h, 0);
+            return 1;
+          }
+          // drag resize
+        } else if (mouse_resize && rbutton && ALT_DOWN) {
+          // focus mouseover
+        } else if (mouse_focus && mouseenabled) {
+          if (c && selmon->sel != c) {
+            bool tmp = mouse_warp;
+            mouse_warp = false;
+            focus(c);
+            mouse_warp = tmp;
+          }
+        }
+      }
+    }
+    dragged = NULL;
+    mouseenabled = true;
+  }
+  return CallNextHookEx(NULL, nCode, wParam, lParam);
 }
 
 bool CanMoveWindow(HWND hwnd);
@@ -584,6 +634,10 @@ void manage(HWND hwnd, Monitor *owner) {
     return;
   }
 
+  int corner = DWMWCP_DONOTROUND;
+  if (!DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &corner, sizeof(corner)))
+    errormsg("Failed to set corner preferences:");
+
   Client *c;
   RECT rect;
   GetWindowRect(hwnd, &rect);
@@ -742,10 +796,11 @@ Client *wintoclient(HWND hwnd) {
   Client *c;
   Monitor *m;
 
-  for (m = mons; m; m = m->next)
-    for (c = m->clients; c; c = c->next)
-      if (c->hwnd == hwnd)
-        return c;
+  if (hwnd)
+    for (m = mons; m; m = m->next)
+      for (c = m->clients; c; c = c->next)
+        if (c->hwnd == hwnd)
+          return c;
   return NULL;
 }
 
@@ -825,14 +880,6 @@ void ensurefocused(void) {
   }
 }
 
-int EndsWith(const char *str, const char *suffix) {
-  size_t lenstr = strlen(str);
-  size_t lensuffix = strlen(suffix);
-  if (lensuffix > lenstr)
-    return 0;
-  return strncmp(str + lenstr - lensuffix, suffix, lensuffix) == 0;
-}
-
 bool unmanaged_matches(const unmanaged_t *rule, const char *name) {
   int n = strlen(name);
   switch (rule->matchtype) {
@@ -842,19 +889,18 @@ bool unmanaged_matches(const unmanaged_t *rule, const char *name) {
     return strncmp(rule->title, name, strlen(rule->title)) == 0;
   case CONTAINS:
     return strstr(name, rule->title) != NULL;
-  case ENDSWITH:
-    size_t lenstr = strlen(name);
-    size_t lensuffix = strlen(rule->title);
+  case ENDSWITH: {
+    int lenstr = strlen(name);
+    int lensuffix = strlen(rule->title);
     if (lensuffix > lenstr)
       return false;
     return strncmp(name + lenstr - lensuffix, rule->title, lensuffix) == 0;
   }
+  }
   return false;
 }
 
-void CALLBACK WindowCallback(HWINEVENTHOOK hWinEventHook, DWORD event,
-                             HWND hwnd, LONG idObject, LONG idChild,
-                             DWORD dwEventThread, DWORD dwmsEventTime) {
+void CALLBACK WindowCallback(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime) {
   char name[256] = {0};
   if (!GetWindowText(hwnd, name, sizeof(name)))
     return;
@@ -897,20 +943,24 @@ void scan(void) {
 }
 
 int main(int argc, char **argv) {
+  HHOOK keyboardHook, mouseHook;
+  keyboardHook = mouseHook = NULL;
   install_crash_handler();
   // check if wdwm.exe is already running.
-  HANDLE h = CreateMutex(NULL, TRUE, "wdwm");
+  HANDLE h = CreateMutexA(NULL, TRUE, "wdwm");
   if (GetLastError() == ERROR_ALREADY_EXISTS) {
     die("wdwm is already running");
   }
 
   HINSTANCE hInstance = GetModuleHandle(NULL);
-  HHOOK keyboardHook = SetWindowsHookExA(WH_KEYBOARD_LL, KeyboardProc, hInstance, 0);
+  keyboardHook = SetWindowsHookExA(WH_KEYBOARD_LL, KeyboardProc, hInstance, 0);
   if (keyboardHook == NULL)
     die("Failed to register keyboard hook:");
-  HHOOK mouseHook = SetWindowsHookExA(WH_MOUSE_LL, MouseProc, hInstance, 0);
-  if (mouseHook == NULL)
-    die("Failed to register mouse hook:");
+  if (mouse_focus || mouse_drag || mouse_resize) {
+    mouseHook = SetWindowsHookExA(WH_MOUSE_LL, MouseProc, hInstance, 0);
+    if (mouseHook == NULL)
+      die("Failed to register mouse hook:");
+  }
 
   HWINEVENTHOOK eventHook = SetWinEventHook(EVENT_MIN, EVENT_MAX, NULL, WindowCallback, 0, 0, WINEVENT_OUTOFCONTEXT);
   if (eventHook == NULL)
@@ -926,9 +976,12 @@ int main(int argc, char **argv) {
     }
   }
 
-  UnhookWindowsHookEx(keyboardHook);
-  UnhookWindowsHookEx(mouseHook);
-  UnhookWinEvent(eventHook);
+  if (keyboardHook)
+    UnhookWindowsHookEx(keyboardHook);
+  if (mouseHook)
+    UnhookWindowsHookEx(mouseHook);
+  if (eventHook)
+    UnhookWinEvent(eventHook);
   CloseHandle(h);
 
   return 0;

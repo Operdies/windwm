@@ -31,6 +31,10 @@ static const unmanaged_t unmanaged[] = {
 static const int showbar = 1;
 static const int topbar = 0;
 
+static const int mouse_focus = 1;
+static const int mouse_drag = 0;
+static const int mouse_resize = 0;
+
 static const Layout layouts[] = {
     /* symbol     arrange function */
     {"[]=", tilewide}, /* first entry is default */

@@ -515,13 +515,15 @@ void focus(Client *c) {
 
 void setfocus(Client *c) {
   if (c && !c->neverfocus) {
-    SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, (void *)1, 0);
-    int i;
-    for (i = 0; i < 1000; i++) {
-      if (SetForegroundWindow(c->hwnd))
-        break;
+    if (!SetForegroundWindow(c->hwnd)) {
+      int i;
+      SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, (void *)1, 0);
+      for (i = 1; i < 1000; i++) {
+        if (SetForegroundWindow(c->hwnd))
+          break;
+      }
+      TRACEF("Focus in %d tries", i);
     }
-    TRACEF("Focus in %d tries", i);
     SetFocus(c->hwnd);
   }
 }

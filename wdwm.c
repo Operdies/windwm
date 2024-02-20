@@ -1,10 +1,17 @@
 #include "wdwm.h"
 #include "config.h"
 #include "util.h"
+#include <Dwmapi.h>
 #include <dbghelp.h>
 #include <shellapi.h>
 #include <string.h>
+#include <winuser.h>
 
+#pragma comment(lib, "user32.lib")
+#pragma comment(lib, "Dwmapi.lib")
+#pragma comment(lib, "Uxtheme.lib")
+#pragma comment(lib, "Shell32.lib")
+#pragma comment(lib, "Advapi32.lib")
 void setwindowpos(Client *c, int x, int y, int w, int h, UINT flags) {
   TRACEF("Update: (%d,%d) %dx%d", x, y, w, h);
   if (c->isfloating) {

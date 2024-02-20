@@ -1,5 +1,5 @@
+CC = clang
 SRC = wdwm.c util.c
-CC = gcc
 CFLAGS = -std=c99 -pedantic -Wall -O0 -g -DDEBUG
 
 wdwm.exe: ${SRC} Makefile config.h

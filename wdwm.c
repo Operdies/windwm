@@ -16,7 +16,7 @@
 void setwindowpos(Client *c, int x, int y, int w, int h, UINT flags) {
   // if (c->x == x && c->y == y && c->w == w && c->h == h)
   //   return;
-  TRACEF("Update: (%d,%d) %dx%d", x, y, w, h);
+  // TRACEF("Update: (%d,%d) %dx%d", x, y, w, h);
   // flags |= SWP_NOACTIVATE;
   // flags |= SWP_ASYNCWINDOWPOS;
   if (c->isfloating) {
@@ -32,9 +32,9 @@ void setwindowpos(Client *c, int x, int y, int w, int h, UINT flags) {
     c->w = after.right - after.left;
     c->h = after.bottom - after.top;
 
-    TRACEF("Before: (%ld,%ld) %ldx%ld", before.left, before.top, before.right - before.left, before.bottom - before.top);
-    TRACEF(" After: (%ld,%ld) %ldx%ld", after.left, after.top, after.right - after.left, after.bottom - after.top);
-    TRACEF("Client: (%d,%d) %dx%d", c->x, c->y, c->w, c->h);
+    // TRACEF("Before: (%ld,%ld) %ldx%ld", before.left, before.top, before.right - before.left, before.bottom - before.top);
+    // TRACEF(" After: (%ld,%ld) %ldx%ld", after.left, after.top, after.right - after.left, after.bottom - after.top);
+    // TRACEF("Client: (%d,%d) %dx%d", c->x, c->y, c->w, c->h);
   }
 }
 
@@ -212,16 +212,13 @@ DWORD GetProcessIntegrityLevel(HANDLE hProcess) {
 
 bool IsWindowResizableMovable(HWND hwnd) {
   LONG style = GetWindowLong(hwnd, GWL_STYLE);
-  LONG exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
 
   // Check if window is visible and not minimized
   if ((style & WS_VISIBLE) && !(style & WS_MINIMIZE)) {
     // Check if window is sizable or has a border
-    if ((style & WS_SIZEBOX) || (style & WS_BORDER)) {
-      // Check if window is not a child, popup, or dialog
-      if (!(style & WS_CHILD) && !(style & WS_POPUP) && !(exStyle & WS_EX_DLGMODALFRAME)) {
-        return true;
-      }
+    // Check if window is not a child, popup, or dialog
+    if (!(style & WS_CHILD) && !(style & WS_POPUP)) {
+      return true;
     }
   }
   return false;
@@ -350,7 +347,6 @@ void showhide(Client *c) {
 }
 
 void arrange(Monitor *m) {
-  describemonitor(m);
   if (m)
     showhide(m->stack);
   else
@@ -526,6 +522,7 @@ void focus(Client *c) {
     attachstack(c);
     /* Avoid flickering when another client appears and the border
      * is restored */
+    TRACEF("Focus %s", c->name);
   }
   setfocus(c);
   selmon->sel = c;
@@ -652,7 +649,7 @@ void manage(HWND hwnd, Monitor *owner) {
   if (wintoclient(hwnd)) {
     return;
   }
-  if (!IsWindowVisible(hwnd) || IsIconic(hwnd) || !CanMoveWindow(hwnd) || !IsWindowResizableMovable(hwnd) || !GetWindowText(hwnd, name, sizeof(name))) {
+  if (!CanMoveWindow(hwnd) || !IsWindowResizableMovable(hwnd) || !GetWindowText(hwnd, name, sizeof(name))) {
     unmanage(hwnd);
     return;
   }
@@ -662,6 +659,17 @@ void manage(HWND hwnd, Monitor *owner) {
   int corner = DWMWCP_DONOTROUND;
   if (!DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &corner, sizeof(corner)))
     errormsg("Failed to set corner preferences for %s", name);
+
+  LONG lStyle = GetWindowLong(hwnd, GWL_STYLE);
+  lStyle &= ~(WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_THICKFRAME | WS_CAPTION | WS_SYSMENU);
+  SetWindowLong(hwnd, GWL_STYLE, lStyle);
+
+  LONG lExStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+  // lExStyle |= WS_EX_CLIENTEDGE;
+  // lExStyle |= WS_EX_STATICEDGE;
+  lExStyle &= ~(WS_EX_DLGMODALFRAME | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE);
+  SetWindowLong(hwnd, GWL_EXSTYLE, lExStyle);
+  SetWindowPos(hwnd, NULL, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER);
 
   Client *c;
   RECT rect;
@@ -747,7 +755,7 @@ void setupmons(void) {
 void setupclients(void) {
   HWND hwnd = GetTopWindow(NULL);
   while (hwnd) {
-    if (IsWindowVisible(hwnd) && !IsIconic(hwnd) && CanMoveWindow(hwnd) && IsWindowResizableMovable(hwnd)) {
+    if (CanMoveWindow(hwnd) && IsWindowResizableMovable(hwnd)) {
       manage(hwnd, NULL);
     }
     hwnd = GetNextWindow(hwnd, GW_HWNDNEXT);
@@ -960,6 +968,7 @@ void CALLBACK WindowProc(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LO
 }
 
 void scan(void) {
+  SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, (void *)1, 0);
   HWND fg = GetForegroundWindow();
   setupmons();
   setupclients();

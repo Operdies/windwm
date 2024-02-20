@@ -315,9 +315,26 @@ void showhide(Client *c) {
     unmanage(c->hwnd);
     return;
   }
+
+  // Setting the window placement appears to be needed in order for restore / minimize to happen without animations
+  WINDOWPLACEMENT wndpl = {
+      .length = sizeof(WINDOWPLACEMENT),
+      .ptMinPosition = (POINT){.x = c->x, .y = c->y},
+      .ptMaxPosition = (POINT){.x = c->x, .y = c->y},
+      .rcNormalPosition =
+          (RECT){
+              .left = c->x,
+              .top = c->y,
+              .right = c->x + c->w,
+              .bottom = c->y + c->h,
+          },
+  };
   if (ISVISIBLE(c)) {
     TRACEF("Showing client: %s", c->name);
     /* show clients top down */
+    wndpl.showCmd = SW_RESTORE;
+    if (!SetWindowPlacement(c->hwnd, &wndpl))
+      errormsg("Error restoring window:");
     setwindowpos(c, c->x, c->y, c->w, c->h, SWP_NOACTIVATE);
     if ((!c->mon->lt[c->mon->sellt]->arrange || c->isfloating) && !c->isfullscreen)
       resize(c, c->x, c->y, c->w, c->h, 0);
@@ -326,7 +343,9 @@ void showhide(Client *c) {
     TRACEF("Hiding client: %s", c->name);
     /* hide clients bottom up */
     showhide(c->snext);
-    setwindowpos(c, c->x, c->y, c->w, c->h, SWP_NOACTIVATE);
+    wndpl.showCmd = SW_MINIMIZE;
+    if (!SetWindowPlacement(c->hwnd, &wndpl))
+      errormsg("Error minimizing window:");
   }
 }
 
@@ -617,6 +636,8 @@ void unmanage(HWND hwnd) {
   if (!c)
     return;
 
+  TRACEF("Unmanage %s", c->name);
+
   m = c->mon;
 
   detach(c);
@@ -628,17 +649,19 @@ void unmanage(HWND hwnd) {
 
 void manage(HWND hwnd, Monitor *owner) {
   char name[256];
+  if (wintoclient(hwnd)) {
+    return;
+  }
   if (!IsWindowVisible(hwnd) || IsIconic(hwnd) || !CanMoveWindow(hwnd) || !IsWindowResizableMovable(hwnd) || !GetWindowText(hwnd, name, sizeof(name))) {
     unmanage(hwnd);
     return;
   }
-  if (wintoclient(hwnd)) {
-    return;
-  }
+
+  TRACEF("Manage %s", name);
 
   int corner = DWMWCP_DONOTROUND;
   if (!DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &corner, sizeof(corner)))
-    errormsg("Failed to set corner preferences:");
+    errormsg("Failed to set corner preferences for %s", name);
 
   Client *c;
   RECT rect;
@@ -919,8 +942,8 @@ void CALLBACK WindowProc(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LO
     manage(hwnd, selmon);
     break;
   case EVENT_OBJECT_DESTROY:
-  case EVENT_OBJECT_HIDE:
-  case EVENT_SYSTEM_MINIMIZESTART:
+    // case EVENT_OBJECT_HIDE: Windows are being hidden by showhide: ShowWindow(SW_HIDE)
+    // case EVENT_SYSTEM_MINIMIZESTART:
     unmanage(hwnd);
     break;
   default:

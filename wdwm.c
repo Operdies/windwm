@@ -902,14 +902,13 @@ bool unmanaged_matches(const unmanaged_t *rule, const char *name) {
   return false;
 }
 
-void CALLBACK WindowCallback(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime) {
+void CALLBACK WindowProc(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime) {
   char name[256] = {0};
-  if (!GetWindowText(hwnd, name, sizeof(name)))
-    return;
-
-  for (int i = 0; i < LENGTH(unmanaged); i++) {
-    if (unmanaged_matches(&unmanaged[i], name))
-      return;
+  if (GetWindowText(hwnd, name, sizeof(name))) {
+    for (int i = 0; i < LENGTH(unmanaged); i++) {
+      if (unmanaged_matches(&unmanaged[i], name))
+        return;
+    }
   }
 
   switch (event) {
@@ -923,6 +922,9 @@ void CALLBACK WindowCallback(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd
   case EVENT_OBJECT_HIDE:
   case EVENT_SYSTEM_MINIMIZESTART:
     unmanage(hwnd);
+    break;
+  default:
+    // TRACEF("Unhandled event: %ld", event);
     break;
   }
   Client *c = wintoclient(GetForegroundWindow());
@@ -964,7 +966,7 @@ int main(int argc, char **argv) {
       die("Failed to register mouse hook:");
   }
 
-  HWINEVENTHOOK eventHook = SetWinEventHook(EVENT_MIN, EVENT_MAX, NULL, WindowCallback, 0, 0, WINEVENT_OUTOFCONTEXT);
+  HWINEVENTHOOK eventHook = SetWinEventHook(EVENT_MIN, EVENT_MAX, NULL, WindowProc, 0, 0, WINEVENT_OUTOFCONTEXT);
   if (eventHook == NULL)
     die("Failed to register window event hook:");
 

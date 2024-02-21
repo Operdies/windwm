@@ -7,6 +7,7 @@
 static const char *tags[] = {"1", "2", "3", "4", "5", "6", "7", "8", "9"};
 /* the gaps between windows can be adjusted by tuning borderpx. */
 static const int borderpx = 0;
+static const int gaps = 5;
 int mouse_warp = 1;
 static const float mfact = 0.65;     /* factor of master area size [0.05..0.95] */
 static const int nmaster = 2;        /* number of clients in master area */

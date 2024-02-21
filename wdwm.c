@@ -19,6 +19,7 @@ void setwindowpos(Client *c, int x, int y, int w, int h, UINT flags) {
   // TRACEF("Update: (%d,%d) %dx%d", x, y, w, h);
   // flags |= SWP_NOACTIVATE;
   // flags |= SWP_ASYNCWINDOWPOS;
+
   if (c->isfloating) {
     // preserve current position but apply flags and make topmost
     SetWindowPos(c->hwnd, HWND_TOP, x, y, w, h, flags);
@@ -574,6 +575,7 @@ void setfocus(Client *c) {
 
 void tilewide(Monitor *m) {
   unsigned int i, n, w, h, mw, mx, ty;
+  int gap;
   Client *c;
 
   for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++)
@@ -581,22 +583,34 @@ void tilewide(Monitor *m) {
   if (n == 0)
     return;
 
+  gap = n > 1 ? gaps : 0;
+
   if (n > m->nmaster)
     mw = m->nmaster ? m->ww * m->mfact : 0;
   else
     mw = m->ww;
-  for (i = mx = ty = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
+  for (i = mx = ty = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++) {
+    int x, y, w2, h2;
     if (i < m->nmaster) {
       w = (mw - mx) / (MIN(n, m->nmaster) - i);
-      resize(c, m->wx + mx, m->wy, w - (2 * c->bw), (m->wh - ty) - (2 * c->bw), 0);
+      x = m->wx + mx;
+      y = m->wy;
+      w2 = w - (2 * c->bw);
+      h2 = (m->wh - ty) - (2 * c->bw);
+      resize(c, x + gap, y + gap, w2 - (gap), h2 - (gap * 2), 0);
       if (mx + WIDTH(c) < m->ww)
-        mx += WIDTH(c);
+        mx += WIDTH(c) + gap;
     } else {
       h = (m->wh - ty) / (n - i);
-      resize(c, m->wx + mw, m->wy + ty, m->ww - mw - (2 * c->bw), h - (2 * c->bw), 0);
+      x = m->wx + mw;
+      y = m->wy + ty;
+      w2 = m->ww - mw - (2 * c->bw);
+      h2 = h - (2 * c->bw);
+      resize(c, x + gap, y + gap, w2 - (gap * 2), h2 - (gap * 2), 0);
       if (ty + HEIGHT(c) < m->wh)
-        ty += HEIGHT(c);
+        ty += HEIGHT(c) + gap;
     }
+  }
 }
 
 void monocle(Monitor *m) {

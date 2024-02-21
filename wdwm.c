@@ -19,10 +19,11 @@ void setwindowpos(Client *c, int x, int y, int w, int h, UINT flags) {
   // TRACEF("Update: (%d,%d) %dx%d", x, y, w, h);
   // flags |= SWP_NOACTIVATE;
   // flags |= SWP_ASYNCWINDOWPOS;
+  flags |= SWP_NOACTIVATE;
 
   if (c->isfloating) {
     // preserve current position but apply flags and make topmost
-    SetWindowPos(c->hwnd, HWND_TOP, x, y, w, h, flags);
+    SetWindowPos(c->hwnd, HWND_TOPMOST, x, y, w, h, flags);
   } else {
     RECT before, after;
     GetWindowRect(c->hwnd, &before);
@@ -37,29 +38,6 @@ void setwindowpos(Client *c, int x, int y, int w, int h, UINT flags) {
     // TRACEF(" After: (%ld,%ld) %ldx%ld", after.left, after.top, after.right - after.left, after.bottom - after.top);
     // TRACEF("Client: (%d,%d) %dx%d", c->x, c->y, c->w, c->h);
   }
-}
-
-void UpdateForegroundLockTimeout(DWORD timeoutMs) {
-  DWORD currentValue;
-  if (!SystemParametersInfo(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, &currentValue, 0)) {
-    errormsg("Failed to read current foreground lock timeout:");
-    return;
-  }
-
-  if (currentValue == timeoutMs)
-    return;
-
-  TRACEF("Trying to update foreground lock timeout: %lu -> %lu", currentValue, timeoutMs);
-  if (!SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, (void*)(u64)timeoutMs, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE)) {
-    errormsg("Setting foreground lock timeout failed:");
-    return;
-  }
-
-  DWORD newvalue;
-  if (SystemParametersInfo(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, &newvalue, 0))
-    TRACEF("Updated foreground lock timeout: %lu -> %lu", currentValue, newvalue);
-  else
-    errormsg("Unable to retrieve updated value:");
 }
 
 void _spawn(const char *cmd, bool elevate) {
@@ -107,14 +85,67 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
 }
 
 static bool mouseenabled = true;
+static int lbutton = 0;
+static int rbutton = 0;
+
+enum { MOVE_DRAG, RESIZE_DRAG };
+void handle_drag(Client *c, POINT pt, int type) {
+  static Client *current = NULL;
+  static POINT start;
+  static int x, y, w, h;
+  static bool leftdrag, topdrag;
+
+  if (!c) {
+    if (current) {
+      TRACE("End drag");
+      current = NULL;
+    }
+    mouseenabled = true;
+    return;
+  }
+
+  if (!current) {
+    TRACE("Start drag");
+    x = c->x;
+    y = c->y;
+    h = c->h;
+    w = c->w;
+    start = pt;
+    current = c;
+    mouseenabled = false;
+    selmon->sel = current;
+    if (!current->isfloating)
+      togglefloating(&(Arg){0});
+    if (type == RESIZE_DRAG) {
+      // determine nearest corner
+      leftdrag = abs(x - pt.x) < abs((x + w) - pt.x);
+      topdrag = abs(y - pt.y) < abs((y + h) - pt.y);
+    }
+  }
+
+  int mx = pt.x - start.x;
+  int my = pt.y - start.y;
+
+  if (type == MOVE_DRAG) {
+    resizeclient(current, x + mx, y + my, w, h);
+  } else {
+    int deltax, deltay, deltaw, deltah;
+    deltax = leftdrag ? mx : 0;
+    deltay = topdrag ? my : 0;
+    deltaw = leftdrag ? -mx : mx;
+    deltah = topdrag ? -my : my;
+    resizeclient(current, x + deltax, y + deltay, w + deltaw, h + deltah);
+  }
+
+  SetCursorPos(pt.x, pt.y);
+}
 LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
-  static int lbutton = 0;
-  static int rbutton = 0;
-  static POINT dragstart;
-  static POINT clientstart;
-  static Client *dragged = NULL;
   Client *c;
   HWND hwnd;
+  PMSLLHOOKSTRUCT p;
+
+  if (nCode < 0)
+    return CallNextHookEx(NULL, nCode, wParam, lParam);
 
   if (nCode == HC_ACTION) {
     switch (wParam) {
@@ -131,8 +162,11 @@ LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
       rbutton = 0;
       break;
     }
-    if (wParam == WM_MOUSEMOVE) {
-      PMSLLHOOKSTRUCT p = (PMSLLHOOKSTRUCT)lParam;
+
+    bool is_drag = mouse_drag && lbutton && ALT_DOWN;
+    bool is_resize = mouse_resize && rbutton && ALT_DOWN;
+    p = (PMSLLHOOKSTRUCT)lParam;
+    if (wParam == WM_MOUSEMOVE || is_drag || is_resize) {
       // clang-format off
       for (hwnd = WindowFromPoint(p->pt), c = wintoclient(hwnd); 
            hwnd && !c; 
@@ -140,31 +174,13 @@ LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
       // clang-format on
       if (hwnd) {
         // drag move
-        if (mouse_drag && lbutton && ALT_DOWN) {
-          // start drag
-          if (!dragged) {
-            TRACE("Start drag");
-            dragstart = p->pt;
-            dragged = wintoclient(hwnd);
-            if (dragged) {
-              clientstart.x = dragged->x;
-              clientstart.y = dragged->y;
-              mouseenabled = false;
-              dragged->isfloating = true;
-            }
-          }
-          if (dragged) {
-            int deltax = p->pt.x - dragstart.x;
-            int deltay = p->pt.y - dragstart.y;
-
-            TRACEF("Drag: %d, %d", deltax, deltay);
-
-            SetCursorPos(p->pt.x, p->pt.y);
-            setwindowpos(dragged, clientstart.x + deltax, clientstart.y + deltay, dragged->w, dragged->h, 0);
-            return 1;
-          }
+        if (c && is_drag) {
+          handle_drag(c, p->pt, MOVE_DRAG);
+          return 1;
           // drag resize
-        } else if (mouse_resize && rbutton && ALT_DOWN) {
+        } else if (is_resize) {
+          handle_drag(c, p->pt, RESIZE_DRAG);
+          return 1;
           // focus mouseover
         } else if (mouse_focus && mouseenabled) {
           if (c && selmon->sel != c) {
@@ -176,7 +192,8 @@ LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
         }
       }
     }
-    dragged = NULL;
+    // terminate drag event
+    handle_drag(NULL, p->pt, 0);
     mouseenabled = true;
   }
   return CallNextHookEx(NULL, nCode, wParam, lParam);
@@ -526,8 +543,14 @@ void togglefloating(const Arg *arg) {
   if (selmon->sel->isfullscreen) /* no support for fullscreen windows */
     return;
   selmon->sel->isfloating = !selmon->sel->isfloating || selmon->sel->isfixed;
-  if (selmon->sel->isfloating)
+  if (selmon->sel->isfloating) {
     resize(selmon->sel, selmon->sel->x, selmon->sel->y, selmon->sel->w, selmon->sel->h, 0);
+    // make topmost
+    SetWindowPos(selmon->sel->hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+  } else {
+    // make bottommost
+    SetWindowPos(selmon->sel->hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+  }
   arrange(selmon);
 }
 
@@ -561,15 +584,16 @@ int forceforeground(HWND hwnd, int n) {
   return false;
 }
 
+int forcefocus(HWND hwnd) {
+  // magic hack that makes setfocus succeed
+  AttachThreadInput(GetCurrentThreadId(), GetWindowThreadProcessId(GetAncestor(hwnd, GA_ROOT), NULL), TRUE);
+  return SetFocus(hwnd) ? true : false;
+}
+
 void setfocus(Client *c) {
   if (c && !c->neverfocus) {
-    if (!forceforeground(c->hwnd, 300)) {
-      UpdateForegroundLockTimeout(0);
-      if (!forceforeground(c->hwnd, 300)) {
-        errormsg("Foreground %s failed", c->name);
-      }
-    }
-    SetFocus(c->hwnd);
+    if (!forcefocus(c->hwnd))
+      errormsg("Failed to set focus:");
   }
 }
 
@@ -698,9 +722,6 @@ void manage(HWND hwnd, Monitor *owner) {
 
   TRACEF("Manage %s", name);
 
-  int corner = DWMWCP_DONOTROUND;
-  if (!DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &corner, sizeof(corner)))
-    errormsg("Failed to set corner preferences for %s", name);
 
   LONG lStyle = GetWindowLong(hwnd, GWL_STYLE);
   lStyle &= ~(WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_THICKFRAME | WS_CAPTION | WS_SYSMENU);
@@ -1010,7 +1031,6 @@ void CALLBACK WindowProc(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LO
 }
 
 void scan(void) {
-  UpdateForegroundLockTimeout(0);
   HWND fg = GetForegroundWindow();
   setupmons();
   setupclients();

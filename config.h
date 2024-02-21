@@ -51,7 +51,7 @@ static const Layout layouts[] = {
 	{ MODKEY|ControlMask|ShiftMask, KEY,      toggletag,      {.ui = 1 << TAG} },
 
 
-static const char termcmd[] = "alacritty.exe";
+static const char termcmd[] = "powershell.exe -NoLogo";
 
 // clang-format off
 static const Key keys[] =

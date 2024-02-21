@@ -38,6 +38,29 @@ void setwindowpos(Client *c, int x, int y, int w, int h, UINT flags) {
   }
 }
 
+void UpdateForegroundLockTimeout(DWORD timeoutMs) {
+  DWORD currentValue;
+  if (!SystemParametersInfo(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, &currentValue, 0)) {
+    errormsg("Failed to read current foreground lock timeout:");
+    return;
+  }
+
+  if (currentValue == timeoutMs)
+    return;
+
+  TRACEF("Trying to update foreground lock timeout: %lu -> %lu", currentValue, timeoutMs);
+  if (!SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, (void*)(u64)timeoutMs, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE)) {
+    errormsg("Setting foreground lock timeout failed:");
+    return;
+  }
+
+  DWORD newvalue;
+  if (SystemParametersInfo(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, &newvalue, 0))
+    TRACEF("Updated foreground lock timeout: %lu -> %lu", currentValue, newvalue);
+  else
+    errormsg("Unable to retrieve updated value:");
+}
+
 void _spawn(const char *cmd, bool elevate) {
   if (!ShellExecuteA(NULL, elevate ? "runas" : "open", cmd, 0, 0, SW_SHOWNORMAL))
     errormsg("Failed to spawn %s%s:", elevate ? "elevated " : "", cmd);
@@ -327,7 +350,7 @@ void showhide(Client *c) {
           },
   };
   if (ISVISIBLE(c)) {
-    TRACEF("Showing client: %s", c->name);
+    // TRACEF("Showing client: %s", c->name);
     /* show clients top down */
     wndpl.showCmd = SW_RESTORE;
     if (!SetWindowPlacement(c->hwnd, &wndpl))
@@ -337,7 +360,7 @@ void showhide(Client *c) {
       resize(c, c->x, c->y, c->w, c->h, 0);
     showhide(c->snext);
   } else {
-    TRACEF("Hiding client: %s", c->name);
+    // TRACEF("Hiding client: %s", c->name);
     /* hide clients bottom up */
     showhide(c->snext);
     wndpl.showCmd = SW_MINIMIZE;
@@ -522,23 +545,28 @@ void focus(Client *c) {
     attachstack(c);
     /* Avoid flickering when another client appears and the border
      * is restored */
-    TRACEF("Focus %s", c->name);
+    // TRACEF("Focus %s", c->name);
   }
   setfocus(c);
   selmon->sel = c;
   arrange(selmon);
 }
 
+int forceforeground(HWND hwnd, int n) {
+  for (int i = 0; i < n; i++) {
+    if (SetForegroundWindow(hwnd))
+      return true;
+  }
+  return false;
+}
+
 void setfocus(Client *c) {
   if (c && !c->neverfocus) {
-    if (!SetForegroundWindow(c->hwnd)) {
-      int i;
-      SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, (void *)1, 0);
-      for (i = 1; i < 1000; i++) {
-        if (SetForegroundWindow(c->hwnd))
-          break;
+    if (!forceforeground(c->hwnd, 300)) {
+      UpdateForegroundLockTimeout(0);
+      if (!forceforeground(c->hwnd, 300)) {
+        errormsg("Foreground %s failed", c->name);
       }
-      TRACEF("Focus in %d tries", i);
     }
     SetFocus(c->hwnd);
   }
@@ -968,7 +996,7 @@ void CALLBACK WindowProc(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LO
 }
 
 void scan(void) {
-  SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, (void *)1, 0);
+  UpdateForegroundLockTimeout(0);
   HWND fg = GetForegroundWindow();
   setupmons();
   setupclients();

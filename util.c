@@ -12,6 +12,13 @@
 
 void errormsg(const char *fmt, ...) {
   va_list ap;
+  HANDLE h = GetStdHandle(STD_ERROR_HANDLE);
+  CONSOLE_SCREEN_BUFFER_INFO ci;
+  WORD sa;
+
+  GetConsoleScreenBufferInfo(h, &ci);
+  sa = ci.wAttributes;
+  SetConsoleTextAttribute(h, FOREGROUND_RED);
 
   va_start(ap, fmt);
   vfprintf(stderr, fmt, ap);
@@ -25,14 +32,22 @@ void errormsg(const char *fmt, ...) {
                    NULL, GetLastError(),
                    MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), buf,
                    (sizeof(buf) / sizeof(wchar_t)), NULL);
-    wprintf(L"%ws", buf);
+    fwprintf(stderr, L"%ws", buf);
   } else {
     fputc('\n', stderr);
   }
+  SetConsoleTextAttribute(h, sa);
 }
 
 void die(const char *fmt, ...) {
   va_list ap;
+  HANDLE h = GetStdHandle(STD_ERROR_HANDLE);
+  CONSOLE_SCREEN_BUFFER_INFO ci;
+  WORD sa;
+
+  GetConsoleScreenBufferInfo(h, &ci);
+  sa = ci.wAttributes;
+  SetConsoleTextAttribute(h, FOREGROUND_RED);
 
   va_start(ap, fmt);
   vfprintf(stderr, fmt, ap);
@@ -46,10 +61,11 @@ void die(const char *fmt, ...) {
                    NULL, GetLastError(),
                    MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), buf,
                    (sizeof(buf) / sizeof(wchar_t)), NULL);
-    wprintf(L"%ws", buf);
+    fwprintf(stderr, L"%ws", buf);
   } else {
     fputc('\n', stderr);
   }
+  SetConsoleTextAttribute(h, sa);
 
   exit(1);
 }

@@ -41,7 +41,9 @@ void setwindowpos(Client *c, int x, int y, int w, int h, UINT flags) {
 }
 
 void _spawn(const char *cmd, bool elevate) {
-  if (!ShellExecuteA(NULL, elevate ? "runas" : "open", cmd, 0, 0, SW_SHOWNORMAL))
+  TRACEF("Spawn %s%s", cmd, elevate ? " elevated" : "");
+  HINSTANCE h = ShellExecute(NULL, elevate ? "runas" : "open", cmd, 0, 0, SW_SHOWNORMAL);
+  if ((u64)h <= 32)
     errormsg("Failed to spawn %s%s:", elevate ? "elevated " : "", cmd);
 }
 void spawn(const Arg *arg) { _spawn(arg->v, false); }
@@ -585,9 +587,16 @@ int forceforeground(HWND hwnd, int n) {
 }
 
 int forcefocus(HWND hwnd) {
-  if (SetFocus(hwnd)) return true;
-  // magic hack that makes setfocus succeed
-  AttachThreadInput(GetCurrentThreadId(), GetWindowThreadProcessId(GetAncestor(hwnd, GA_ROOT), NULL), TRUE);
+  DWORD id, attachTo;
+
+  if (!SetFocus(hwnd)) {
+    // TODO: I'm not sure exactly what the consequences are of attach thread input to all managed windows,
+    // but it appears to solve all focus related issues.
+    TRACE("SetFocus failed. Attaching threads.");
+    id = GetCurrentThreadId();
+    attachTo = GetWindowThreadProcessId(GetAncestor(hwnd, GA_ROOT), NULL);
+    AttachThreadInput(id, attachTo, TRUE);
+  }
   return SetFocus(hwnd) ? true : false;
 }
 

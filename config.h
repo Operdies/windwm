@@ -52,7 +52,10 @@ static const Layout layouts[] = {
 	{ MODKEY|ControlMask|ShiftMask, KEY,      toggletag,      {.ui = 1 << TAG} },
 
 
-static const char termcmd[] = "powershell.exe -NoLogo";
+// ShellExecute needs spaces to be quoted by double double quoting strings
+#define QUOTE(X) #X
+#define DQUOTE(X) "\""#X"\""
+static const char termcmd[] = DQUOTE("C:\\Program Files\\WindowsApps\\Microsoft.WindowsTerminal_1.18.10301.0_x64__8wekyb3d8bbwe\\WindowsTerminal.exe");
 
 // clang-format off
 static const Key keys[] =
@@ -71,7 +74,6 @@ static const Key keys[] =
 	{ MODKEY,                       'Q',            killclient,           {0} },
 	{ MODKEY,                       'T',            setlayout,            {.v = &layouts[0]} },
 	{ MODKEY,                       'M',            setlayout,            {.v = &layouts[1]} },
-	{ MODKEY,                       VK_SPACE,       setlayout,            {0} },
 	{ MODKEY|ShiftMask,             VK_SPACE,       togglefloating,       {0} },
 	// { MODKEY,                       'W',            setlayout,            {.v = &layouts[1]} },
 	{ MODKEY,                       '0',            view,                 {.ui = ~0 } },

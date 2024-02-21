@@ -585,6 +585,7 @@ int forceforeground(HWND hwnd, int n) {
 }
 
 int forcefocus(HWND hwnd) {
+  if (SetFocus(hwnd)) return true;
   // magic hack that makes setfocus succeed
   AttachThreadInput(GetCurrentThreadId(), GetWindowThreadProcessId(GetAncestor(hwnd, GA_ROOT), NULL), TRUE);
   return SetFocus(hwnd) ? true : false;
@@ -721,7 +722,6 @@ void manage(HWND hwnd, Monitor *owner) {
   }
 
   TRACEF("Manage %s", name);
-
 
   LONG lStyle = GetWindowLong(hwnd, GWL_STYLE);
   lStyle &= ~(WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_THICKFRAME | WS_CAPTION | WS_SYSMENU);

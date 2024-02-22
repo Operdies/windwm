@@ -73,9 +73,7 @@ typedef struct {
 } Layout;
 
 struct Monitor {
-  DISPLAY_DEVICE dd;
-  MONITORINFO mi;
-  HMONITOR hmon;
+  char name[100];
   float mfact;
   int nmaster;
   int num;

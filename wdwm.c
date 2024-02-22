@@ -49,10 +49,10 @@ void _spawn(const char *cmd, bool elevate) {
 void spawn(const Arg *arg) { _spawn(arg->v, false); }
 void spawn_elevated(const Arg *arg) { _spawn(arg->v, true); }
 
-#define WIN_DOWN (keystate[VK_LWIN] || keystate[VK_RWIN])
-#define ALT_DOWN (keystate[VK_LMENU] || keystate[VK_RMENU] || keystate[VK_MENU])
-#define CTRL_DOWN (keystate[VK_LCONTROL] || keystate[VK_RCONTROL] || keystate[VK_CONTROL])
-#define SHIFT_DOWN (keystate[VK_LSHIFT] || keystate[VK_RSHIFT] || keystate[VK_SHIFT])
+#define WIN_DOWN ((GetKeyState(VK_LWIN) | GetKeyState(VK_RWIN)) & 0x8000)
+#define ALT_DOWN (GetKeyState(VK_MENU) & 0x8000)
+#define CTRL_DOWN (GetKeyState(VK_CONTROL) & 0x8000)
+#define SHIFT_DOWN (GetKeyState(VK_SHIFT) & 0x8000)
 #define MODMAP (u8)((WIN_DOWN ? SuperMask : 0) | (ALT_DOWN ? MetaMask : 0) | (CTRL_DOWN ? ControlMask : 0) | (SHIFT_DOWN ? ShiftMask : 0))
 
 static bool keystate[0xff] = {0};
@@ -218,7 +218,7 @@ Monitor *createmon(void) {
 }
 
 void describemonitor(Monitor *m) {
-  printf("Monitor: %s\n", m->dd.DeviceName);
+  printf("Monitor: %s\n", m->name);
   printf("\tResolution: %d x %d\n", m->mw, m->mh);
   printf("\tPosition: %d x %d\n", m->mx, m->my);
   printf("\tWork area: %d x %d\n", m->ww, m->wh);
@@ -288,7 +288,7 @@ void describeclient(Client *c) {
   printf("Client: %s\n", c->name);
   printf("\tPosition: %d x %d\n", c->x, c->y);
   printf("\tSize: %d x %d\n", c->w, c->h);
-  printf("\tMonitor: %s\n", c->mon->dd.DeviceName);
+  printf("\tMonitor: %s\n", c->mon->name);
 }
 
 void applyrules(Client *c) {
@@ -804,9 +804,6 @@ void setupmons(void) {
       mi.cbSize = sizeof(mi);
       GetMonitorInfo(hmon, &mi);
 
-      m->dd = dd;
-      m->hmon = hmon;
-      m->mi = mi;
       m->mw = mi.rcMonitor.right - mi.rcMonitor.left;
       m->mh = mi.rcMonitor.bottom - mi.rcMonitor.top;
       m->mx = mi.rcMonitor.left;
@@ -815,6 +812,7 @@ void setupmons(void) {
       m->wh = mi.rcWork.bottom - mi.rcWork.top;
       m->wx = mi.rcWork.left;
       m->wy = mi.rcWork.top;
+      strncpy_s(m->name, sizeof(m->name), dd.DeviceName, strlen(dd.DeviceName));
 
       m->next = mons;
       mons = m;
@@ -824,14 +822,13 @@ void setupmons(void) {
   describe_monitors();
 }
 
+BOOL CALLBACK RegisterClientsCallback(HWND hwnd, LPARAM lparam) {
+  manage(hwnd, NULL);
+  return TRUE;
+}
+
 void setupclients(void) {
-  HWND hwnd = GetTopWindow(NULL);
-  while (hwnd) {
-    if (CanMoveWindow(hwnd) && IsWindowResizableMovable(hwnd)) {
-      manage(hwnd, NULL);
-    }
-    hwnd = GetNextWindow(hwnd, GW_HWNDNEXT);
-  }
+  EnumWindows(RegisterClientsCallback, 0);
 }
 
 void setnmaster(const Arg *arg) { selmon->nmaster = MAX(arg->i, 0); }

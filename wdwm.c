@@ -15,7 +15,7 @@
 
 // TODO: this causes flickering. Find a way to keep tiled windows at 
 // the bottom without flickering.
-#define HWND_TILED HWND_BOTTOM
+#define HWND_TILED HWND_TOP
 
 void setwindowpos(Client *c, int x, int y, int w, int h, UINT flags) {
   // if (c->x == x && c->y == y && c->w == w && c->h == h)
@@ -548,14 +548,21 @@ void togglefloating(const Arg *arg) {
     return;
   if (selmon->sel->isfullscreen) /* no support for fullscreen windows */
     return;
+  HWND h = selmon->sel->hwnd;
   selmon->sel->isfloating = !selmon->sel->isfloating || selmon->sel->isfixed;
   if (selmon->sel->isfloating) {
     resize(selmon->sel, selmon->sel->x, selmon->sel->y, selmon->sel->w, selmon->sel->h, 0);
     // make topmost
-    SetWindowPos(selmon->sel->hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+    SetWindowPos(h, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+    LONG s = GetWindowLong(h, GWL_STYLE);
+    s |= WS_THICKFRAME;
+    SetWindowLong(h, GWL_STYLE, s);
   } else {
     // make bottommost
     SetWindowPos(selmon->sel->hwnd, HWND_TILED, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+    LONG s = GetWindowLong(h, GWL_STYLE);
+    s &= ~WS_THICKFRAME;
+    SetWindowLong(h, GWL_STYLE, s);
   }
   arrange(selmon);
 }
@@ -744,6 +751,8 @@ void manage(HWND hwnd, Monitor *owner) {
   SetWindowLong(hwnd, GWL_STYLE, lStyle);
 
   LONG lExStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+  // these edge styles don't affect all windows, so we can't use it as a poor mans border.
+  // need to actually draw some borders manually I guess
   // lExStyle |= WS_EX_CLIENTEDGE;
   // lExStyle |= WS_EX_STATICEDGE;
   lExStyle &= ~(WS_EX_DLGMODALFRAME | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE);

@@ -91,6 +91,6 @@ static const Key keys[] =
 	TAGKEYS('6', 5)
 	TAGKEYS('7', 6)
 	TAGKEYS('8', 7)
-	TAGKEYS('9', 7)
+	TAGKEYS('9', 8)
 };
 

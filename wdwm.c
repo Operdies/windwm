@@ -13,9 +13,9 @@
 #pragma comment(lib, "Shell32.lib")
 #pragma comment(lib, "Advapi32.lib")
 
-// TODO: this causes flickering. Find a way to keep tiled windows at 
+// TODO: this causes flickering. Find a way to keep tiled windows at
 // the bottom without flickering.
-#define HWND_TILED HWND_TOP
+#define HWND_TILED HWND_BOTTOM
 
 void setwindowpos(Client *c, int x, int y, int w, int h, UINT flags) {
   // if (c->x == x && c->y == y && c->w == w && c->h == h)
@@ -133,14 +133,14 @@ void handle_drag(Client *c, POINT pt, int type) {
   int my = pt.y - start.y;
 
   if (type == MOVE_DRAG) {
-    resizeclient(current, x + mx, y + my, w, h);
+    resizeclient(current, x + mx, y + my, w, h, 0);
   } else {
     int deltax, deltay, deltaw, deltah;
     deltax = leftdrag ? mx : 0;
     deltay = topdrag ? my : 0;
     deltaw = leftdrag ? -mx : mx;
     deltah = topdrag ? -my : my;
-    resizeclient(current, x + deltax, y + deltay, w + deltaw, h + deltah);
+    resizeclient(current, x + deltax, y + deltay, w + deltaw, h + deltah, 0);
   }
 
   SetCursorPos(pt.x, pt.y);
@@ -301,9 +301,9 @@ void applyrules(Client *c) {
   c->tags = c->tags & TAGMASK ? c->tags & TAGMASK : c->mon->tagset[c->mon->seltags];
 }
 
-void resize(Client *c, int x, int y, int w, int h, int interact) { resizeclient(c, x, y, w, h); }
+void resize(Client *c, int x, int y, int w, int h, int interact) { resizeclient(c, x, y, w, h, 0); }
 
-void resizeclient(Client *c, int x, int y, int w, int h) {
+void resizeclient(Client *c, int x, int y, int w, int h, UINT flags) {
   if (c->x == x && c->y == y && c->w == w && c->h == h)
     return;
   c->oldx = c->x;
@@ -314,7 +314,7 @@ void resizeclient(Client *c, int x, int y, int w, int h) {
   c->y = y;
   c->w = w;
   c->h = h;
-  setwindowpos(c, c->x, c->y, c->w, c->h, SWP_NOZORDER | SWP_NOACTIVATE);
+  setwindowpos(c, c->x, c->y, c->w, c->h, flags | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 void warpmouse(int x, int y) { SetCursorPos(x, y); }
@@ -356,7 +356,7 @@ void showhide(Client *c) {
   if (!c)
     return;
   if (!IsWindow(c->hwnd)) {
-    unmanage(c->hwnd);
+    unmanage(c->hwnd, "Is not a window (showhide)");
     return;
   }
 
@@ -716,14 +716,14 @@ Monitor *dirtomon(int dir) {
   return m;
 }
 
-void unmanage(HWND hwnd) {
+void unmanage(HWND hwnd, const char *reason) {
   Client *c;
   Monitor *m;
   c = wintoclient(hwnd);
   if (!c)
     return;
 
-  TRACEF("Unmanage %s", c->name);
+  TRACEF("Unmanage %s: %s", c->name, reason ? reason : "");
 
   m = c->mon;
 
@@ -734,13 +734,17 @@ void unmanage(HWND hwnd) {
   arrange(m);
 }
 
+bool ancestor_managed(HWND hwnd) {
+  return (hwnd && IsWindow(hwnd) && wintoclient(GetWindow(hwnd, GW_OWNER)));
+}
+
 void manage(HWND hwnd, Monitor *owner) {
   char name[256];
   if (wintoclient(hwnd)) {
     return;
   }
   if (!CanMoveWindow(hwnd) || !IsWindowResizableMovable(hwnd) || !GetWindowText(hwnd, name, sizeof(name))) {
-    unmanage(hwnd);
+    unmanage(hwnd, "Can no longer move window");
     return;
   }
 
@@ -780,6 +784,7 @@ void manage(HWND hwnd, Monitor *owner) {
   c->mon = owner;
   c->dpix = 1;
   c->dpiy = 1;
+  c->isfloating = ancestor_managed(c->hwnd);
 
   c->x = c->oldx = rect.left;
   c->y = c->oldy = rect.top;
@@ -1035,7 +1040,8 @@ void CALLBACK WindowProc(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LO
   case EVENT_OBJECT_DESTROY:
     // case EVENT_OBJECT_HIDE: Windows are being hidden by showhide: ShowWindow(SW_HIDE)
     // case EVENT_SYSTEM_MINIMIZESTART:
-    unmanage(hwnd);
+    if (!IsWindow(hwnd))
+      unmanage(hwnd, "Object destroyed");
     break;
   default:
     // TRACEF("Unhandled event: %ld", event);

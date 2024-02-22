@@ -9,3 +9,12 @@ b. Can we disguise the ugliness by creating a solid border to indicate which win
 c. If a window uses native title bar and borders, it will not fill its entire rect. Can we ensure it does so without disabling the borders completely?
 * There is no visual indication which window is focused
 * floating windows are hard to distinguish due to no borders (enable border style for floating windows as temp?)
+* weird behavior when KS8400 creates child windows
+* when a window has a modal dialog (e.g. confirm button from smartinstaller), and the main window loses focus, the modal dialog can become covered by tiled winodws
+- How can we ensure tiled winodws never leave the bottom of the Z order???
+* While Rider is debugging, stuff stops working
+* Multiple Rider solutions are weird
+* Look into AnimateWindows API
+* Learn how Windows actually does hierarchies:
+- https://www.cnblogs.com/fwycmengsoft/p/10201734.html
+- https://learn.microsoft.com/en-us/windows/win32/winmsg/window-features?redirectedfrom=MSDN#owned_windows

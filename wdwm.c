@@ -13,6 +13,10 @@
 #pragma comment(lib, "Shell32.lib")
 #pragma comment(lib, "Advapi32.lib")
 
+// TODO: this causes flickering. Find a way to keep tiled windows at 
+// the bottom without flickering.
+#define HWND_TILED HWND_BOTTOM
+
 void setwindowpos(Client *c, int x, int y, int w, int h, UINT flags) {
   // if (c->x == x && c->y == y && c->w == w && c->h == h)
   //   return;
@@ -22,12 +26,12 @@ void setwindowpos(Client *c, int x, int y, int w, int h, UINT flags) {
   flags |= SWP_NOACTIVATE;
 
   if (c->isfloating) {
-    // preserve current position but apply flags and make topmost
     SetWindowPos(c->hwnd, HWND_TOPMOST, x, y, w, h, flags);
   } else {
     RECT before, after;
     GetWindowRect(c->hwnd, &before);
-    SetWindowPos(c->hwnd, HWND_NOTOPMOST, x, y, w, h, flags);
+    if (!SetWindowPos(c->hwnd, HWND_TILED, x, y, w, h, flags))
+      errormsg("Failed to move %s:", c->name);
     GetWindowRect(c->hwnd, &after);
     c->x = after.left;
     c->y = after.top;
@@ -551,7 +555,7 @@ void togglefloating(const Arg *arg) {
     SetWindowPos(selmon->sel->hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
   } else {
     // make bottommost
-    SetWindowPos(selmon->sel->hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+    SetWindowPos(selmon->sel->hwnd, HWND_TILED, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
   }
   arrange(selmon);
 }
@@ -573,9 +577,9 @@ void focus(Client *c) {
      * is restored */
     // TRACEF("Focus %s", c->name);
   }
-  setfocus(c);
   selmon->sel = c;
   arrange(selmon);
+  setfocus(c);
 }
 
 int forceforeground(HWND hwnd, int n) {
@@ -604,6 +608,9 @@ void setfocus(Client *c) {
   if (c && !c->neverfocus) {
     if (!forcefocus(c->hwnd))
       errormsg("Failed to set focus:");
+    if (!c->isfloating)
+      // send to bottom while keeping keyboard focus
+      SetWindowPos(c->hwnd, HWND_TILED, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
   }
 }
 
@@ -827,9 +834,7 @@ BOOL CALLBACK RegisterClientsCallback(HWND hwnd, LPARAM lparam) {
   return TRUE;
 }
 
-void setupclients(void) {
-  EnumWindows(RegisterClientsCallback, 0);
-}
+void setupclients(void) { EnumWindows(RegisterClientsCallback, 0); }
 
 void setnmaster(const Arg *arg) { selmon->nmaster = MAX(arg->i, 0); }
 

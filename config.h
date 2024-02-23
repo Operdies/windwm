@@ -25,6 +25,14 @@ typedef struct {
 
 static const unmanaged_t unmanaged[] = {
     {"Microsoft Teams Notification", MATCHES},
+    {"OleMainThreadWndName", MATCHES},
+    {"Task Manager", MATCHES},
+    {"Default IME", MATCHES},
+    {"Windows Input Experience", MATCHES},
+    {"PopupHost", MATCHES},
+    {"AgilentLicenseNotifier", MATCHES},
+    {"Task Switching", MATCHES},
+    {"Program Manager", MATCHES},
     {"Windows Requested Elevation: ", STARTSWITH},
 };
 

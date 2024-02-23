@@ -17,6 +17,43 @@
 // the bottom without flickering.
 #define HWND_TILED HWND_BOTTOM
 
+bool unmanaged_matches(const unmanaged_t *rule, const char *name) {
+  int n = strlen(name);
+  switch (rule->matchtype) {
+    case MATCHES:
+      return strncmp(rule->title, name, n) == 0;
+    case STARTSWITH:
+      return strncmp(rule->title, name, strlen(rule->title)) == 0;
+    case CONTAINS:
+      return strstr(name, rule->title) != NULL;
+    case ENDSWITH: {
+      int lenstr = strlen(name);
+      int lensuffix = strlen(rule->title);
+      if (lensuffix > lenstr)
+        return false;
+      return strncmp(name + lenstr - lensuffix, rule->title, lensuffix) == 0;
+    }
+  }
+  return false;
+}
+
+bool should_manage(HWND hwnd) {
+  char name[256] = {0};
+  if (!GetWindowText(hwnd, name, sizeof(name)))
+    return false;
+  if (!IsWindow(hwnd))
+    return false;
+
+  for (int i = 0; i < LENGTH(unmanaged); i++) {
+    if (unmanaged_matches(&unmanaged[i], name)){
+      TRACEF("Unmanaged match: %s -> %s", unmanaged[i].title, name);
+      return false;
+    }
+  }
+  return true;
+}
+
+
 void setwindowpos(Client *c, int x, int y, int w, int h, UINT flags) {
   // if (c->x == x && c->y == y && c->w == w && c->h == h)
   //   return;
@@ -121,7 +158,7 @@ void handle_drag(Client *c, POINT pt, int type) {
     mouseenabled = false;
     selmon->sel = current;
     if (!current->isfloating)
-      togglefloating(&(Arg){0});
+      setfloating(current, true);
     if (type == RESIZE_DRAG) {
       // determine nearest corner
       leftdrag = abs(x - pt.x) < abs((x + w) - pt.x);
@@ -205,8 +242,7 @@ LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
   return CallNextHookEx(NULL, nCode, wParam, lParam);
 }
 
-bool CanMoveWindow(HWND hwnd);
-bool IsWindowResizableMovable(HWND hwnd);
+bool CanControlWindow(HWND hwnd);
 
 Monitor *createmon(void) {
   Monitor *m;
@@ -257,7 +293,7 @@ DWORD GetProcessIntegrityLevel(HANDLE hProcess) {
   return dwIntegrityLevel;
 }
 
-bool IsWindowResizableMovable(HWND hwnd) {
+bool IsWindowResizableMovable(HWND hwnd, const char *name) {
   LONG style = GetWindowLong(hwnd, GWL_STYLE);
 
   // Check if window is visible and not minimized
@@ -271,7 +307,7 @@ bool IsWindowResizableMovable(HWND hwnd) {
   return false;
 }
 
-bool CanMoveWindow(HWND hwnd) {
+bool CanControlWindow(HWND hwnd) {
   DWORD dwProcessId;
   GetWindowThreadProcessId(hwnd, &dwProcessId);
 
@@ -543,15 +579,13 @@ void focusstack(const Arg *arg) {
   }
 }
 
-void togglefloating(const Arg *arg) {
-  if (!selmon->sel)
-    return;
-  if (selmon->sel->isfullscreen) /* no support for fullscreen windows */
-    return;
-  HWND h = selmon->sel->hwnd;
-  selmon->sel->isfloating = !selmon->sel->isfloating || selmon->sel->isfixed;
-  if (selmon->sel->isfloating) {
-    resize(selmon->sel, selmon->sel->x, selmon->sel->y, selmon->sel->w, selmon->sel->h, 0);
+void setfloating(Client *c, bool f){
+  HWND h;
+  c->isfloating = f;
+  h = c->hwnd;
+
+  if (c->isfloating) {
+    resize(c, c->x, c->y, c->w, c->h, 0);
     // make topmost
     SetWindowPos(h, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
     LONG s = GetWindowLong(h, GWL_STYLE);
@@ -559,11 +593,19 @@ void togglefloating(const Arg *arg) {
     SetWindowLong(h, GWL_STYLE, s);
   } else {
     // make bottommost
-    SetWindowPos(selmon->sel->hwnd, HWND_TILED, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+    SetWindowPos(h, HWND_TILED, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
     LONG s = GetWindowLong(h, GWL_STYLE);
     s &= ~WS_THICKFRAME;
     SetWindowLong(h, GWL_STYLE, s);
   }
+}
+
+void togglefloating(const Arg *arg) {
+  if (!selmon->sel)
+    return;
+  if (selmon->sel->isfullscreen) /* no support for fullscreen windows */
+    return;
+  setfloating(selmon->sel, !selmon->sel->isfloating || selmon->sel->isfixed);
   arrange(selmon);
 }
 
@@ -734,16 +776,14 @@ void unmanage(HWND hwnd, const char *reason) {
   arrange(m);
 }
 
-bool ancestor_managed(HWND hwnd) {
-  return (hwnd && IsWindow(hwnd) && wintoclient(GetWindow(hwnd, GW_OWNER)));
-}
+bool ancestor_managed(HWND hwnd) { return (hwnd && IsWindow(hwnd) && wintoclient(GetWindow(hwnd, GW_OWNER))); }
 
 void manage(HWND hwnd, Monitor *owner) {
   char name[256];
   if (wintoclient(hwnd)) {
     return;
   }
-  if (!CanMoveWindow(hwnd) || !IsWindowResizableMovable(hwnd) || !GetWindowText(hwnd, name, sizeof(name))) {
+  if (!should_manage(hwnd) || !CanControlWindow(hwnd) || !GetWindowText(hwnd, name, sizeof(name)) || !IsWindowResizableMovable(hwnd, name)) {
     unmanage(hwnd, "Can no longer move window");
     return;
   }
@@ -751,6 +791,7 @@ void manage(HWND hwnd, Monitor *owner) {
   TRACEF("Manage %s", name);
 
   LONG lStyle = GetWindowLong(hwnd, GWL_STYLE);
+  bool isfloating = ancestor_managed(hwnd) || (lStyle & WS_CHILD) || (lStyle & WS_POPUP);
   lStyle &= ~(WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_THICKFRAME | WS_CAPTION | WS_SYSMENU);
   SetWindowLong(hwnd, GWL_STYLE, lStyle);
 
@@ -784,8 +825,6 @@ void manage(HWND hwnd, Monitor *owner) {
   c->mon = owner;
   c->dpix = 1;
   c->dpiy = 1;
-  c->isfloating = ancestor_managed(c->hwnd);
-
   c->x = c->oldx = rect.left;
   c->y = c->oldy = rect.top;
   c->w = c->oldw = rect.right - rect.left;
@@ -801,6 +840,7 @@ void manage(HWND hwnd, Monitor *owner) {
 
   strncpy_s(c->name, sizeof(c->name) - 1, name, sizeof(c->name) - 1);
   owner->sel = c;
+  setfloating(c, isfloating);
   applyrules(c);
 
   attachtop(c);
@@ -1001,34 +1041,9 @@ void ensurefocused(void) {
   }
 }
 
-bool unmanaged_matches(const unmanaged_t *rule, const char *name) {
-  int n = strlen(name);
-  switch (rule->matchtype) {
-  case MATCHES:
-    return strncmp(rule->title, name, n) == 0;
-  case STARTSWITH:
-    return strncmp(rule->title, name, strlen(rule->title)) == 0;
-  case CONTAINS:
-    return strstr(name, rule->title) != NULL;
-  case ENDSWITH: {
-    int lenstr = strlen(name);
-    int lensuffix = strlen(rule->title);
-    if (lensuffix > lenstr)
-      return false;
-    return strncmp(name + lenstr - lensuffix, rule->title, lensuffix) == 0;
-  }
-  }
-  return false;
-}
-
 void CALLBACK WindowProc(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime) {
-  char name[256] = {0};
-  if (GetWindowText(hwnd, name, sizeof(name))) {
-    for (int i = 0; i < LENGTH(unmanaged); i++) {
-      if (unmanaged_matches(&unmanaged[i], name))
-        return;
-    }
-  }
+  if (!should_manage(hwnd))
+    return;
 
   switch (event) {
   case EVENT_OBJECT_CREATE:

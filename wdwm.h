@@ -138,6 +138,7 @@ void quit(const Arg *arg);
 Monitor *recttomon(int x, int y, int w, int h);
 void resize(Client *c, int x, int y, int w, int h, int interact);
 void resizeclient(Client *c, int x, int y, int w, int h, UINT flags);
+void setfloating(Client *c, bool f);
 void resizemouse(const Arg *arg);
 void restack(Monitor *m);
 void run(void);

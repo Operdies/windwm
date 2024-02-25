@@ -20,19 +20,19 @@
 bool unmanaged_matches(const unmanaged_t *rule, const char *name) {
   int n = strlen(name);
   switch (rule->matchtype) {
-    case MATCHES:
-      return strncmp(rule->title, name, n) == 0;
-    case STARTSWITH:
-      return strncmp(rule->title, name, strlen(rule->title)) == 0;
-    case CONTAINS:
-      return strstr(name, rule->title) != NULL;
-    case ENDSWITH: {
-      int lenstr = strlen(name);
-      int lensuffix = strlen(rule->title);
-      if (lensuffix > lenstr)
-        return false;
-      return strncmp(name + lenstr - lensuffix, rule->title, lensuffix) == 0;
-    }
+  case MATCHES:
+    return strncmp(rule->title, name, n) == 0;
+  case STARTSWITH:
+    return strncmp(rule->title, name, strlen(rule->title)) == 0;
+  case CONTAINS:
+    return strstr(name, rule->title) != NULL;
+  case ENDSWITH: {
+    int lenstr = strlen(name);
+    int lensuffix = strlen(rule->title);
+    if (lensuffix > lenstr)
+      return false;
+    return strncmp(name + lenstr - lensuffix, rule->title, lensuffix) == 0;
+  }
   }
   return false;
 }
@@ -45,14 +45,13 @@ bool should_manage(HWND hwnd) {
     return false;
 
   for (int i = 0; i < LENGTH(unmanaged); i++) {
-    if (unmanaged_matches(&unmanaged[i], name)){
-      TRACEF("Unmanaged match: %s -> %s", unmanaged[i].title, name);
+    if (unmanaged_matches(&unmanaged[i], name)) {
+      // TRACEF("Unmanaged match: %s -> %s", unmanaged[i].title, name);
       return false;
     }
   }
   return true;
 }
-
 
 void setwindowpos(Client *c, int x, int y, int w, int h, UINT flags) {
   // if (c->x == x && c->y == y && c->w == w && c->h == h)
@@ -389,10 +388,13 @@ void attachstack(Client *c) {
 }
 
 void showhide(Client *c) {
+  Client *next;
   if (!c)
     return;
   if (!IsWindow(c->hwnd)) {
+    next = c->snext;
     unmanage(c->hwnd, "Is not a window (showhide)");
+    showhide(next);
     return;
   }
 
@@ -579,7 +581,7 @@ void focusstack(const Arg *arg) {
   }
 }
 
-void setfloating(Client *c, bool f){
+void setfloating(Client *c, bool f) {
   HWND h;
   c->isfloating = f;
   h = c->hwnd;
@@ -1042,9 +1044,7 @@ void ensurefocused(void) {
 }
 
 void CALLBACK WindowProc(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime) {
-  if (!should_manage(hwnd))
-    return;
-
+  Client *c;
   switch (event) {
   case EVENT_OBJECT_CREATE:
   case EVENT_OBJECT_SHOW:
@@ -1062,8 +1062,7 @@ void CALLBACK WindowProc(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LO
     // TRACEF("Unhandled event: %ld", event);
     break;
   }
-  Client *c = wintoclient(GetForegroundWindow());
-  if (c) {
+  if ((c = wintoclient(GetForegroundWindow()))) {
     selmon = c->mon;
     selmon->sel = c;
   }

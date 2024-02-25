@@ -1,5 +1,6 @@
 #pragma once
 
+#include "util.h"
 #include "wdwm.h"
 #include <winuser.h>
 
@@ -7,17 +8,21 @@
 static const char *tags[] = {"1", "2", "3", "4", "5", "6", "7", "8", "9"};
 /* the gaps between windows can be adjusted by tuning borderpx. */
 static const int borderpx = 0;
-static const int gaps = 5;
-int mouse_warp = 1;
+static const int gaps = 4;
 static const float mfact = 0.65;     /* factor of master area size [0.05..0.95] */
 static const int nmaster = 2;        /* number of clients in master area */
 static const int resizehints = 1;    /* 1 means respect size hints in tiled resizals */
 static const int lockfullscreen = 1; /* 1 will force focus on the fullscreen window */
+/* not really a configuration. Just a hack to treat windows task bar like the dwm bar */
+static const int showbar = 1;
+static const int topbar = 0;
 
-enum { STARTSWITH,
-       ENDSWITH,
-       MATCHES,
-       CONTAINS };
+int mouse_warp = 0;
+static const int mouse_focus = 0;
+static const int mouse_drag = 1;
+static const int mouse_resize = 1;
+
+enum { STARTSWITH, ENDSWITH, MATCHES, CONTAINS };
 typedef struct {
   char *title;
   int matchtype;
@@ -35,14 +40,6 @@ static const unmanaged_t unmanaged[] = {
     {"Program Manager", MATCHES},
     {"Windows Requested Elevation: ", STARTSWITH},
 };
-
-/* not really a configuration. Just a hack to treat windows task bar like the dwm bar */
-static const int showbar = 1;
-static const int topbar = 0;
-
-static const int mouse_focus = 1;
-static const int mouse_drag = 1;
-static const int mouse_resize = 1;
 
 static const Layout layouts[] = {
     /* symbol     arrange function */

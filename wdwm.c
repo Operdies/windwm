@@ -60,6 +60,7 @@ void setwindowpos(Client *c, int x, int y, int w, int h, UINT flags) {
   // flags |= SWP_NOACTIVATE;
   // flags |= SWP_ASYNCWINDOWPOS;
   flags |= SWP_NOACTIVATE;
+  flags |= SWP_NOSENDCHANGING;
 
   if (c->isfloating) {
     SetWindowPos(c->hwnd, HWND_TOPMOST, x, y, w, h, flags);
@@ -1043,9 +1044,27 @@ void ensurefocused(void) {
   }
 }
 
-void CALLBACK WindowProc(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime) {
+void CALLBACK WindowProc(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LONG idObject, LONG idChild,
+                         DWORD dwEventThread, DWORD dwmsEventTime) {
   Client *c;
+
   switch (event) {
+  case EVENT_OBJECT_LOCATIONCHANGE:
+    if ((c = wintoclient(hwnd))) {
+      RECT cpos;
+      GetWindowRect(c->hwnd, &cpos);
+      if (c->x != cpos.left || c->y != cpos.top || c->w != cpos.right - cpos.left || c->h != cpos.bottom - cpos.top) {
+        c->x = cpos.left;
+        c->y = cpos.top;
+        c->w = cpos.right - cpos.left;
+        c->h = cpos.bottom - cpos.top;
+        if (!c->isfloating) {
+          setfloating(c, true);
+          arrange(c->mon);
+        }
+      }
+    }
+    break;
   case EVENT_OBJECT_CREATE:
   case EVENT_OBJECT_SHOW:
   case EVENT_OBJECT_FOCUS:

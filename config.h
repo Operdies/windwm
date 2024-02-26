@@ -17,7 +17,7 @@ static const int lockfullscreen = 1; /* 1 will force focus on the fullscreen win
 static const int showbar = 1;
 static const int topbar = 0;
 
-int mouse_warp = 0;
+int mouse_warp = 1;
 static const int mouse_focus = 0;
 static const int mouse_drag = 1;
 static const int mouse_resize = 1;

@@ -1050,7 +1050,7 @@ void CALLBACK WindowProc(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LO
 
   switch (event) {
   case EVENT_OBJECT_LOCATIONCHANGE:
-    if ((c = wintoclient(hwnd))) {
+    if ((c = wintoclient(hwnd)) && ISVISIBLE(c)) {
       RECT cpos;
       GetWindowRect(c->hwnd, &cpos);
       if (c->x != cpos.left || c->y != cpos.top || c->w != cpos.right - cpos.left || c->h != cpos.bottom - cpos.top) {

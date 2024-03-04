@@ -156,8 +156,10 @@ void handle_drag(Client *c, POINT pt, int type) {
     current = c;
     mouseenabled = false;
     selmon->sel = current;
-    if (!current->isfloating)
+    if (!current->isfloating) {
       setfloating(current, true);
+      arrange(current->mon);
+    }
     if (type == RESIZE_DRAG) {
       // determine nearest corner
       leftdrag = abs(x - pt.x) < abs((x + w) - pt.x);
@@ -641,6 +643,9 @@ int forceforeground(HWND hwnd, int n) {
   return false;
 }
 
+// TODO: This is not a solution
+// https://devblogs.microsoft.com/oldnewthing/20080801-00/?p=21393
+// SetFocus will hang if the target application is not responding because both applications 
 int forcefocus(HWND hwnd) {
   DWORD id, attachTo;
 

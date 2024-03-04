@@ -48,6 +48,13 @@ typedef struct {
   const Arg arg;
 } Key;
 
+typedef struct {
+  bool elevate;
+  const char *cmd;
+  const char *args;
+  const char *wd;
+} SpawnArgs;
+
 typedef struct Monitor Monitor;
 typedef struct Client Client;
 
@@ -93,8 +100,6 @@ struct Monitor {
 
 /* functions */
 
-void spawn(const Arg *arg);
-void spawn_elevated(const Arg *arg);
 Client *wintoclient(HWND hwnd);
 
 void applyrules(Client *c);
@@ -153,7 +158,7 @@ void setup(void);
 void seturgent(Client *c, int urg);
 void showhide(Client *c);
 int solitary(Client *c);
-void spawn(const Arg *arg);
+void spawn(const Arg *a);
 void splitmon(const Arg *arg);
 void tag(const Arg *arg);
 void tagmon(const Arg *arg);

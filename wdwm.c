@@ -81,14 +81,13 @@ void setwindowpos(Client *c, int x, int y, int w, int h, UINT flags) {
   }
 }
 
-void _spawn(const char *cmd, bool elevate) {
-  TRACEF("Spawn %s%s", cmd, elevate ? " elevated" : "");
-  HINSTANCE h = ShellExecute(NULL, elevate ? "runas" : "open", cmd, 0, 0, SW_SHOWNORMAL);
+void spawn(const Arg *a) {
+  SpawnArgs *args = (SpawnArgs*)a->v;
+  TRACEF("Spawn %s '%s' in %s %s", args->cmd, args->args, args->wd, args->elevate ? " elevated" : "");
+  HINSTANCE h = ShellExecute(NULL, args->elevate ? "runas" : "open", args->cmd, args->args, args->wd, SW_SHOWNORMAL);
   if ((u64)h <= 32)
-    errormsg("Failed to spawn %s%s:", elevate ? "elevated " : "", cmd);
+    errormsg("Failed to spawn %s%s:", args->elevate ? "elevated " : "", args->cmd);
 }
-void spawn(const Arg *arg) { _spawn(arg->v, false); }
-void spawn_elevated(const Arg *arg) { _spawn(arg->v, true); }
 
 #define WIN_DOWN ((GetKeyState(VK_LWIN) | GetKeyState(VK_RWIN)) & 0x8000)
 #define ALT_DOWN (GetKeyState(VK_MENU) & 0x8000)

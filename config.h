@@ -38,7 +38,7 @@ static const unmanaged_t unmanaged[] = {
     {"AgilentLicenseNotifier", MATCHES},
     {"Task Switching", MATCHES},
     {"Program Manager", MATCHES},
-    {"Windows Requested Elevation: ", STARTSWITH},
+    {"Requested Elevation: ", CONTAINS},
 };
 
 static const Layout layouts[] = {
@@ -60,13 +60,15 @@ static const Layout layouts[] = {
 // ShellExecute needs spaces to be quoted by double double quoting strings
 #define QUOTE(X) #X
 #define DQUOTE(X) "\""#X"\""
-static const char termcmd[] = DQUOTE("C:\\Program Files\\WindowsApps\\Microsoft.WindowsTerminal_1.18.10301.0_x64__8wekyb3d8bbwe\\WindowsTerminal.exe");
+static const SpawnArgs termcmd = { .cmd = "powershell.exe", .args = "-NoLogo", .wd = "C:\\git", .elevate = false };
+static const SpawnArgs termcmdelevate = { .cmd = "powershell.exe", .args = "-NoLogo", .wd = "C:\\git", .elevate = true};
 
 // clang-format off
 static const Key keys[] =
 {
 	/* modifier                     key             function                 argument */
-	{ MODKEY|ShiftMask,             VK_RETURN,      spawn,                {.v = termcmd } },
+	{ MODKEY|ShiftMask,             VK_RETURN,      spawn,                {.v = &termcmd } },
+	{ MODKEY|ShiftMask|ControlMask, VK_RETURN,      spawn,                {.v = &termcmdelevate } },
 	{ MODKEY,                       'J',            focusstack,           {.i = +1 } },
 	{ MODKEY,                       'K',            focusstack,           {.i = -1 } },
 	{ MODKEY|ShiftMask,             'J',            pushdown,             {0} },

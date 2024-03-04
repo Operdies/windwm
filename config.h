@@ -41,11 +41,13 @@ static const unmanaged_t unmanaged[] = {
     {"Requested Elevation: ", CONTAINS},
 };
 
+enum { TILEWIDE, FLOATING, MONOCLE };
+
 static const Layout layouts[] = {
     /* symbol     arrange function */
-    {"[]=", tilewide}, /* first entry is default */
-    {"><>", NULL},     /* no layout function means floating behavior */
-                       // {"[M]", monocle},
+    [ TILEWIDE ] = {"[]=", tilewide}, /* first entry is default */
+    [ FLOATING ] = {"><>", NULL},     /* no layout function means floating behavior */
+    [ MONOCLE ]  = {"[M]", monocle},
 };
 
 #define MODKEY MetaMask
@@ -79,8 +81,9 @@ static const Key keys[] =
 	{ MODKEY,                       'L',            setmfact,             {.f = +0.05} },
 	{ MODKEY,                       'G',            zoom,                 {0} },
 	{ MODKEY,                       'Q',            killclient,           {0} },
-	{ MODKEY,                       'T',            setlayout,            {.v = &layouts[0]} },
-	{ MODKEY,                       'M',            setlayout,            {.v = &layouts[1]} },
+	{ MODKEY,                       'T',            setlayout,            {.v = &layouts[TILEWIDE]} },
+	{ MODKEY,                       'M',            setlayout,            {.v = &layouts[MONOCLE]} },
+	{ MODKEY,                       'F',            setlayout,            {.v = &layouts[FLOATING]} },
 	{ MODKEY|ShiftMask,             VK_SPACE,       togglefloating,       {0} },
 	// { MODKEY,                       'W',            setlayout,            {.v = &layouts[1]} },
 	{ MODKEY,                       '0',            view,                 {.ui = ~0 } },
